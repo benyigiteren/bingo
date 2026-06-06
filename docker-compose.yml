@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  biolink:
+    build: .
+    container_name: biolink_app
+    ports:
+      - "1907:1907"
+    volumes:
+      - biolink_data:/app/data
+      - biolink_uploads:/app/uploads
+    environment:
+      - PORT=1907
+      - DB_PATH=/app/data/biolink.db
+    restart: unless-stopped
+
+volumes:
+  biolink_data:
+  biolink_uploads:

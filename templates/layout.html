@@ -1,0 +1,40 @@
+{{ define "layout" }}
+<!DOCTYPE html>
+<html lang="tr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ block "title" . }}Gotree{{ end }}</title>
+    <meta name="description" content="Gotree - Kişisel ve profesyonel bağlantılarınızı tek bir şık ve minimalist sayfada paylaşın.">
+    <!-- Tailwind CSS (derlenmiş dosya) -->
+    <link rel="stylesheet" href="/static/dist/style.css">
+    <!-- Fontlar -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="/static/js/alpine.min.js"></script>
+    <!-- Özel Başlık Kodları -->
+    {{ block "head" . }}{{ end }}
+    <style>
+        [x-cloak] {
+            display: none !important;
+        }
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-[#FDFBF7] text-neutral-800 min-h-screen flex flex-col selection:bg-neutral-900/5 selection:text-neutral-900">
+    <!-- Arka Plan Grid Işıması (Subtle Ambient Light Grid) -->
+    <div class="fixed inset-0 pointer-events-none z-0 opacity-[0.04] bg-[linear-gradient(to_right,#A0A0A0_1px,transparent_1px),linear-gradient(to_bottom,#A0A0A0_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+    
+    <main class="flex-grow flex flex-col relative z-10">
+        {{ template "content" . }}
+    </main>
+</body>
+</html>
+{{ end }}

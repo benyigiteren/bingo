@@ -1,0 +1,19 @@
+{
+  "name": "test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "npx @tailwindcss/cli -i static/src/input.css -o static/dist/style.css --minify",
+    "watch:css": "npx @tailwindcss/cli -i static/src/input.css -o static/dist/style.css --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@tailwindcss/cli": "^4.3.0",
+    "alpinejs": "^3.15.12",
+    "sortablejs": "^1.15.7"
+  }
+}

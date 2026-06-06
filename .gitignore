@@ -1,0 +1,10 @@
+*.exe
+*.db
+node_modules/
+uploads/
+scratch*.py
+scratch/
+.agents/
+*.bak*
+skills-lock.json
+package-lock.json

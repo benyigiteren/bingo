@@ -1,0 +1,162 @@
+{{ define "title" }}API Dökümantasyonu - Biolink{{ end }}
+
+{{ define "content" }}
+<div class="min-h-screen bg-[#FDFBF7] text-neutral-800 py-12 px-4 sm:px-6 lg:px-8 selection:bg-neutral-900/5 selection:text-neutral-900 relative">
+    
+    <!-- Üst Dekorasyon -->
+    <div class="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-neutral-800 to-neutral-600"></div>
+
+    <div class="max-w-4xl mx-auto space-y-12 relative z-10">
+        <!-- Logo ve Başlık -->
+        <div class="flex items-center justify-between border-b border-[#EAE6DF] pb-6">
+            <div class="flex items-center gap-3">
+                <a href="/admin" class="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-neutral-900 text-white font-bold text-sm shadow-sm">
+                    B
+                </a>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight text-neutral-900">Biolink API Geliştirici Kılavuzu</h1>
+                    <p class="text-xs text-neutral-500">Yapay Zeka Ajanları ve harici entegrasyonlar için güvenli REST servisleri</p>
+                </div>
+            </div>
+            <a href="/admin" class="text-xs text-neutral-600 hover:text-neutral-900 font-medium transition-all">
+                ← Panele Dön
+            </a>
+        </div>
+
+        <!-- API Yetkilendirme (Auth) Bölümü -->
+        <section class="rounded-2xl border border-[#EAE6DF] bg-white p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] space-y-4">
+            <h2 class="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                API Yetkilendirmesi (Authentication)
+            </h2>
+            <p class="text-sm text-neutral-600 leading-relaxed">
+                Tüm API isteklerinizde kimlik doğrulaması için **X-API-Key** başlığını (Header) veya istek sonuna **api_key** parametresini eklemelisiniz.
+            </p>
+
+            {{ if .APIKey }}
+            <div class="rounded-xl bg-[#FAF7F2] p-4 border border-[#EAE6DF] space-y-2">
+                <span class="block text-[10px] font-bold text-neutral-500 uppercase tracking-wider">Kişisel API Anahtarınız (API Key)</span>
+                <div class="flex items-center justify-between gap-4 font-mono text-xs">
+                    <span class="text-neutral-800 break-all select-all font-semibold" id="api-key-text">{{ .APIKey }}</span>
+                    <button onclick="navigator.clipboard.writeText(document.getElementById('api-key-text').innerText); alert('API Anahtarı panoya kopyalandı.');"
+                        class="text-[10px] bg-neutral-900 hover:bg-neutral-800 text-white font-bold px-3 py-1.5 rounded-lg border border-neutral-700/50 transition-all cursor-pointer">
+                        Kopyala
+                    </button>
+                </div>
+            </div>
+            {{ else }}
+            <div class="rounded-xl bg-amber-500/5 border border-amber-500/10 p-4 text-xs text-amber-800 leading-relaxed">
+                Kişisel API anahtarınızı görüntülemek için lütfen önce <a href="/login" class="underline font-bold">oturum açın</a>.
+            </div>
+            {{ end }}
+        </section>
+
+        <!-- Uç Noktalar (Endpoints) Dökümü -->
+        <div class="space-y-6">
+            <h2 class="text-xl font-bold text-neutral-900 border-b border-[#EAE6DF] pb-2">API Uç Noktaları (Endpoints)</h2>
+
+            <!-- GET /api/v1/page -->
+            <div class="border border-[#EAE6DF] bg-white rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">GET</span>
+                    <code class="text-sm font-semibold text-neutral-900">/api/v1/page</code>
+                </div>
+                <p class="text-xs text-neutral-500">Mevcut kullanıcının sayfa ve blok bilgilerini JSON olarak getirir.</p>
+                <div class="font-mono text-[11px] bg-[#FAF7F2] p-3 border border-[#EAE6DF] rounded-xl text-neutral-700 overflow-x-auto whitespace-pre">curl -X GET "http://{{ .Host }}/api/v1/page" \
+  -H "X-API-Key: {{ if .APIKey }}{{ .APIKey }}{{ else }}API_ANAHTARI{{ end }}"</div>
+            </div>
+
+            <!-- POST /api/v1/page -->
+            <div class="border border-[#EAE6DF] bg-white rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">POST / PUT</span>
+                    <code class="text-sm font-semibold text-neutral-900">/api/v1/page</code>
+                </div>
+                <p class="text-xs text-neutral-500">Sayfa başlığını, biyografisini veya temasını günceller.</p>
+                <div class="font-mono text-[11px] bg-[#FAF7F2] p-3 border border-[#EAE6DF] rounded-xl text-neutral-700 overflow-x-auto whitespace-pre">curl -X POST "http://{{ .Host }}/api/v1/page" \
+  -H "X-API-Key: {{ if .APIKey }}{{ .APIKey }}{{ else }}API_ANAHTARI{{ end }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Yeni Başlığım",
+    "bio": "Yeni biyografi yazım...",
+    "theme": "emerald"
+  }'</div>
+            </div>
+
+            <!-- GET /api/v1/blocks -->
+            <div class="border border-[#EAE6DF] bg-white rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">GET</span>
+                    <code class="text-sm font-semibold text-neutral-900">/api/v1/blocks</code>
+                </div>
+                <p class="text-xs text-neutral-500">Tüm içerik bloklarını listeler.</p>
+                <div class="font-mono text-[11px] bg-[#FAF7F2] p-3 border border-[#EAE6DF] rounded-xl text-neutral-700 overflow-x-auto whitespace-pre">curl -X GET "http://{{ .Host }}/api/v1/blocks" \
+  -H "X-API-Key: {{ if .APIKey }}{{ .APIKey }}{{ else }}API_ANAHTARI{{ end }}"</div>
+            </div>
+
+            <!-- POST /api/v1/blocks (Ekle) -->
+            <div class="border border-[#EAE6DF] bg-white rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">POST</span>
+                    <code class="text-sm font-semibold text-neutral-900">/api/v1/blocks</code>
+                </div>
+                <p class="text-xs text-neutral-500">Sayfaya yeni bir blok ekler. (Tip: 'link', 'text', 'social_links')</p>
+                <div class="font-mono text-[11px] bg-[#FAF7F2] p-3 border border-[#EAE6DF] rounded-xl text-neutral-700 overflow-x-auto whitespace-pre">curl -X POST "http://{{ .Host }}/api/v1/blocks" \
+  -H "X-API-Key: {{ if .APIKey }}{{ .APIKey }}{{ else }}API_ANAHTARI{{ end }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "link",
+    "title": "Kişisel Websitem",
+    "content": "https://ornek.com"
+  }'</div>
+            </div>
+
+            <!-- POST /api/v1/blocks/update (Güncelle) -->
+            <div class="border border-[#EAE6DF] bg-white rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">POST / PUT</span>
+                    <code class="text-sm font-semibold text-neutral-900">/api/v1/blocks/update</code>
+                </div>
+                <p class="text-xs text-neutral-500">Belirli bir bloğun içeriğini, başlığını, stilini (style) veya ikonunu (icon) günceller.</p>
+                <div class="font-mono text-[11px] bg-[#FAF7F2] p-3 border border-[#EAE6DF] rounded-xl text-neutral-700 overflow-x-auto whitespace-pre">curl -X POST "http://{{ .Host }}/api/v1/blocks/update" \
+  -H "X-API-Key: {{ if .APIKey }}{{ .APIKey }}{{ else }}API_ANAHTARI{{ end }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": 42,
+    "title": "Sosyal Medya",
+    "content": "{\"instagram\":\"kullaniciadi\",\"twitter\":\"kullaniciadi\"}",
+    "style": "brutalist",
+    "icon": "instagram"
+  }'</div>
+            </div>
+
+            <!-- DELETE /api/v1/blocks -->
+            <div class="border border-[#EAE6DF] bg-white rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">DELETE</span>
+                    <code class="text-sm font-semibold text-neutral-900">/api/v1/blocks?id={id}</code>
+                </div>
+                <p class="text-xs text-neutral-500">Belirtilen ID'deki bloğu siler.</p>
+                <div class="font-mono text-[11px] bg-[#FAF7F2] p-3 border border-[#EAE6DF] rounded-xl text-neutral-700 overflow-x-auto whitespace-pre">curl -X DELETE "http://{{ .Host }}/api/v1/blocks?id=42" \
+  -H "X-API-Key: {{ if .APIKey }}{{ .APIKey }}{{ else }}API_ANAHTARI{{ end }}"</div>
+            </div>
+
+            <!-- GET /api/v1/stats -->
+            <div class="border border-[#EAE6DF] bg-white rounded-2xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.02)] space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">GET</span>
+                    <code class="text-sm font-semibold text-neutral-900">/api/v1/stats</code>
+                </div>
+                <p class="text-xs text-neutral-500">Linklerinizin tıklanma istatistiklerini (clicks) azalan sırada getirir.</p>
+                <div class="font-mono text-[11px] bg-[#FAF7F2] p-3 border border-[#EAE6DF] rounded-xl text-neutral-700 overflow-x-auto whitespace-pre">curl -X GET "http://{{ .Host }}/api/v1/stats" \
+  -H "X-API-Key: {{ if .APIKey }}{{ .APIKey }}{{ else }}API_ANAHTARI{{ end }}"</div>
+            </div>
+        </div>
+
+        <!-- Alt Bilgi -->
+        <footer class="text-center text-xs text-neutral-400 py-6 border-t border-[#EAE6DF]">
+            Biolink Geliştirici API Servisi. Tüm hakları saklıdır.
+        </footer>
+    </div>
+</div>
+{{ end }}
