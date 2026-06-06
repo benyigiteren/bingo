@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"biolink/db"
+	"gotree/db"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"time"

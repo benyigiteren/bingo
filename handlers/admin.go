@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"biolink/db"
-	"biolink/middleware"
+	"gotree/db"
+	"gotree/middleware"
 	"encoding/json"
 	"fmt"
 	"io"

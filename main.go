@@ -10,9 +10,9 @@ import (
 	"runtime/debug"
 	"time"
 
-	"biolink/db"
-	"biolink/handlers"
-	"biolink/middleware"
+	"gotree/db"
+	"gotree/handlers"
+	"gotree/middleware"
 )
 
 //go:embed templates/*
@@ -23,7 +23,7 @@ var staticFS embed.FS
 
 func main() {
 	var defaultPort = "1907"
-	var defaultDBPath = "./biolink.db"
+	var defaultDBPath = "./gotree.db"
 
 	// Bellek Tüketimini Optimize Eden Arka Plan Rutini (GOGC ayarı ve FreeOSMemory)
 	go func() {

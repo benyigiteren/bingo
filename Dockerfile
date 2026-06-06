@@ -17,7 +17,7 @@ COPY . .
 RUN npm install && npm run build:css
 
 # Uygulamayı optimize edilmiş şekilde derle (CGO olmadan, templates embedded)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o biolink main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o gotree main.go
 
 # 2. Aşama: Çalışma Ortamı (Runtime Stage)
 FROM alpine:3.19
@@ -28,14 +28,14 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata
 
 # Derlenen uygulamayı kopyala (templates/static embed edilmiş)
-COPY --from=builder /app/biolink .
+COPY --from=builder /app/gotree .
 
 # SQLite veritabanı ve profil resimleri için kalıcı dizinler oluştur
 RUN mkdir -p /app/data /app/uploads
 
 # Ortam Değişkenleri
 ENV PORT=1907
-ENV DB_PATH=/app/data/biolink.db
+ENV DB_PATH=/app/data/gotree.db
 
 # Portu dışarı aç
 EXPOSE 1907
@@ -44,4 +44,4 @@ EXPOSE 1907
 VOLUME ["/app/data", "/app/uploads"]
 
 # Uygulamayı başlat
-CMD ["./biolink"]
+CMD ["./gotree"]

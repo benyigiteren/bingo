@@ -1,4 +1,4 @@
-module biolink
+module gotree
 
 go 1.26.3
 

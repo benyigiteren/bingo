@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"bytes"
-	"biolink/db"
+	"gotree/db"
 	"encoding/json"
 	"fmt"
 	"net/http"

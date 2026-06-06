@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"biolink/db"
-	"biolink/middleware"
+	"gotree/db"
+	"gotree/middleware"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -927,7 +927,7 @@ func APIGetSystemStats(w http.ResponseWriter, r *http.Request) {
 
 	// DB file size
 	var dbSize int64
-	dbInfo, err := os.Stat("./biolink.db")
+	dbInfo, err := os.Stat("./gotree.db")
 	if err == nil {
 		dbSize = dbInfo.Size()
 	}
