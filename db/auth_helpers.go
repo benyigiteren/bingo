@@ -147,3 +147,15 @@ func DeleteSession(token string) error {
 	_, err := DB.Exec("DELETE FROM sessions WHERE token = ?", token)
 	return err
 }
+
+// UpdateUsername kullanıcının kullanıcı adını günceller.
+func UpdateUsername(userID int64, newUsername string) error {
+	_, err := DB.Exec("UPDATE users SET username = ? WHERE id = ?", newUsername, userID)
+	return err
+}
+
+// UpdatePassword kullanıcının şifresini günceller.
+func UpdatePassword(userID int64, newPasswordHash string) error {
+	_, err := DB.Exec("UPDATE users SET password_hash = ? WHERE id = ?", newPasswordHash, userID)
+	return err
+}

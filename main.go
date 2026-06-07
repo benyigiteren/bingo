@@ -126,6 +126,7 @@ func main() {
 	mux.Handle("POST /admin/api-key/regenerate", middleware.RequireAuth(http.HandlerFunc(handlers.APIKeyRegeneratePost)))
 	mux.Handle("POST /admin/users/create", middleware.RequireAuth(http.HandlerFunc(handlers.UserCreatePost)))
 	mux.Handle("POST /admin/users/delete", middleware.RequireAuth(http.HandlerFunc(handlers.UserDeletePost)))
+	mux.Handle("POST /admin/profile/update", middleware.RequireAuth(http.HandlerFunc(handlers.ProfileUpdatePost)))
 
 	// Yeni Profil/Kırpma ve Form Bloğu Yönetim Yönlendirmeleri
 	mux.Handle("POST /admin/page/upload-avatar", middleware.RequireAuth(http.HandlerFunc(handlers.PageUploadAvatar)))

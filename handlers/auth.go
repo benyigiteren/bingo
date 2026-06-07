@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
 	"gotree/db"
+	"gotree/middleware"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"time"
@@ -142,4 +144,83 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+// ProfileUpdatePost kullanıcı adı ve/veya şifre değişikliğini işler.
+func ProfileUpdatePost(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserContext(r)
+	if user == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Yetkisiz işlem"})
+		return
+	}
+
+	newUsername := r.FormValue("username")
+	currentPassword := r.FormValue("current_password")
+	newPassword := r.FormValue("new_password")
+	newPasswordConfirm := r.FormValue("new_password_confirm")
+
+	// Kullanıcı adı değişikliği
+	if newUsername != "" && newUsername != user.Username {
+		existingUser, _ := db.GetUserByUsername(newUsername)
+		if existingUser != nil {
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Bu kullanıcı adı zaten kullanılıyor"})
+			return
+		}
+		err := db.UpdateUsername(user.ID, newUsername)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Kullanıcı adı güncellenemedi"})
+			return
+		}
+		user.Username = newUsername
+	}
+
+	// Şifre değişikliği
+	if newPassword != "" {
+		if currentPassword == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Mevcut şifrenizi girin"})
+			return
+		}
+		if newPassword != newPasswordConfirm {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Yeni şifreler birbiriyle uyuşmuyor"})
+			return
+		}
+		if len(newPassword) < 6 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Şifre en az 6 karakter olmalı"})
+			return
+		}
+
+		err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Mevcut şifre hatalı"})
+			return
+		}
+
+		hashedBytes, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Şifre işlenirken hata oluştu"})
+			return
+		}
+
+		err = db.UpdatePassword(user.ID, string(hashedBytes))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Şifre güncellenemedi"})
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"message":  "Profil başarıyla güncellendi",
+		"username": user.Username,
+	})
 }
