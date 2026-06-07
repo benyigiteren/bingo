@@ -35,7 +35,7 @@ func APIHelp(w http.ResponseWriter, r *http.Request) {
 	helpData := map[string]interface{}{
 		"name":        "Gotree API",
 		"version":     "v1.0.0",
-		"description": "Gotree Biolink platformu icin RESTful yonetim ve veri erisim servisi. Sayfa, blok, istatistik ve form yonetimi saglar.",
+		"description": "Gotree platformu icin RESTful yonetim ve veri erisim servisi. Sayfa, blok, istatistik ve form yonetimi saglar.",
 		"base_url":    fmt.Sprintf("https://%s", r.Host),
 		"auth": map[string]interface{}{
 			"method":      "API Key veya Oturum Cerezi",

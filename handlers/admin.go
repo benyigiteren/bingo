@@ -115,7 +115,7 @@ func PageCreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.CreatePage(user.ID, slug, user.Username, "Biolink sayfama hoş geldiniz!", "", "minimal_cream")
+	_, err := db.CreatePage(user.ID, slug, user.Username, "Gotree sayfama hoş geldiniz!", "", "minimal_cream")
 	if err != nil {
 		http.Redirect(w, r, "/admin?error=Sayfa+oluşturulurken+hata", http.StatusSeeOther)
 		return
