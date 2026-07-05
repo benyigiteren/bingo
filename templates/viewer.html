@@ -1,0 +1,122 @@
+{{ define "content" }}
+<div class="viewer-container">
+  <div class="viewer-header">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <span class="mono-meta">Paylaşılan Belge</span>
+        <h1 class="serif-title" style="margin-top: 4px;">{{ .OriginalName }}</h1>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-sm" onclick="copyText(document.getElementById('raw-text-content').textContent, 'Metin panoya kopyalandı!')">Metni Kopyala</button>
+        <a href="/{{ .Username }}/{{ .Filename }}?raw=true" class="btn btn-sm" target="_blank">Ham Hali</a>
+      </div>
+    </div>
+    
+    <div class="viewer-meta-row">
+      <div>Paylaşan: <span class="badge badge-blue">@{{ .Username }}</span></div>
+      <div>Boyut: <span style="font-weight:600;">{{ .FileSize }}</span></div>
+      <div>Görüntüleme: <span style="font-weight:600;">{{ .Views }}</span></div>
+      <div>Tarih: <span style="font-weight:600;">{{ .CreatedAt }}</span></div>
+    </div>
+  </div>
+
+  <div class="viewer-content">
+    {{ if .IsMarkdown }}
+      <div id="markdown-viewer" class="prose"></div>
+    {{ else }}
+      <pre style="font-family: var(--font-mono); font-size: 13.5px; white-space: pre-wrap; word-break: break-all;">{{ .Content }}</pre>
+    {{ end }}
+  </div>
+  
+  <!-- Kopyalama işlemi için ham kaynak -->
+  <pre id="raw-text-content" style="display: none;">{{ .Content }}</pre>
+
+  {{ if .IsMarkdown }}
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const rawText = document.getElementById('raw-text-content').textContent;
+      const viewer = document.getElementById('markdown-viewer');
+      
+      // Basit ve güvenli Markdown ayrıştırıcı (Stored XSS korumalı)
+      function parseMarkdown(md) {
+        let html = md
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+
+        // Kod blokları: ```dil ... ```
+        html = html.replace(/```(?:[a-zA-Z0-9_\-\.\+]+)?\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+        
+        // Satır içi kod: `kod`
+        html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+        // Başlıklar: # H1, ## H2, ### H3
+        html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+        html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+        html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+        // Kalın: **metin**
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+        // Eğik: *metin*
+        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+        // Alıntılar: > metin
+        html = html.replace(/^&gt;[ \t]?(.*$)/gim, '<blockquote>$1</blockquote>');
+
+        // Listeler: - madde veya * madde
+        html = html.replace(/^[ \t]*[\-\*][ \t](.*$)/gim, '<li>$1</li>');
+
+        // Bağlantılar: [başlık](url)
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+        const lines = html.split('\n');
+        const processedLines = [];
+        let inList = false;
+
+        for (let i = 0; i < lines.length; i++) {
+          let line = lines[i];
+          const trimmed = line.trim();
+
+          if (trimmed.startsWith('<li>')) {
+            if (!inList) {
+              processedLines.push('<ul>');
+              inList = true;
+            }
+            processedLines.push(line);
+          } else {
+            if (inList) {
+              processedLines.push('</ul>');
+              inList = false;
+            }
+
+            if (
+              trimmed !== '' && 
+              !trimmed.startsWith('<h') && 
+              !trimmed.startsWith('<pre') && 
+              !trimmed.startsWith('</pre') && 
+              !trimmed.startsWith('<code>') && 
+              !trimmed.startsWith('</code>') && 
+              !trimmed.startsWith('<blockquote') &&
+              !trimmed.startsWith('<blockquote>') &&
+              !trimmed.startsWith('</blockquote>')
+            ) {
+              processedLines.push('<p>' + line + '</p>');
+            } else {
+              processedLines.push(line);
+            }
+          }
+        }
+        if (inList) {
+          processedLines.push('</ul>');
+        }
+
+        return processedLines.join('\n');
+      }
+
+      viewer.innerHTML = parseMarkdown(rawText);
+    });
+  </script>
+  {{ end }}
+</div>
+{{ end }}

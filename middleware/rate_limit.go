@@ -8,148 +8,107 @@ import (
 	"time"
 )
 
-type ipLimit struct {
+type limiter struct {
 	tokens     float64
-	lastAccess time.Time
+	lastRefill time.Time
 }
 
 var (
-	// General rate limit bucket (120 req burst, 2/sec refill)
-	generalLimits = make(map[string]*ipLimit)
-	// Sensitive endpoint bucket (5 req burst, 0.1/sec refill = 1 per 10 sec)
-	sensitiveLimits = make(map[string]*ipLimit)
-	mu              sync.Mutex
+	limiters   = make(map[string]*limiter)
+	limitersMu sync.Mutex
 )
 
-func init() {
-	// Goroutine to periodically clean up idle IP entries (prevents RAM leaks / keeps memory low)
+// CleanUpLimiters removes inactive rate limiters from memory
+func CleanUpLimiters() {
+	ticker := time.NewTicker(15 * time.Minute)
 	go func() {
-		for {
-			time.Sleep(5 * time.Minute)
-			mu.Lock()
+		for range ticker.C {
+			limitersMu.Lock()
 			now := time.Now()
-			for ip, limit := range generalLimits {
-				if now.Sub(limit.lastAccess) > 10*time.Minute {
-					delete(generalLimits, ip)
+			for key, lim := range limiters {
+				// If no requests in the last 15 minutes, remove entry
+				if now.Sub(lim.lastRefill) > 15*time.Minute {
+					delete(limiters, key)
 				}
 			}
-			for ip, limit := range sensitiveLimits {
-				if now.Sub(limit.lastAccess) > 10*time.Minute {
-					delete(sensitiveLimits, ip)
-				}
-			}
-			mu.Unlock()
+			limitersMu.Unlock()
 		}
 	}()
 }
 
-// RateLimit middleware restricts requests based on IP address using separate buckets
-// for sensitive endpoints (form submission, login) and general traffic.
+func getClientIP(r *http.Request) string {
+	// Check headers first (behind proxy like Nginx / Cloudflare)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xip := r.Header.Get("X-Real-IP"); xip != "" {
+		return xip
+	}
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
+
+// RateLimit middleware
+// - Public IP: max 45 requests burst, refill 1.5/sec (90 req/min)
+// - API Key: max 90 requests burst, refill 3.0/sec (180 req/min)
 func RateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			ip = r.RemoteAddr
-		}
+		// Identify user/client key
+		var clientKey string
+		var limit float64
+		var burst float64
 
-		// Support Cloudflare or proxy headers
-		if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
-			ip = cfIP
-		} else if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			parts := strings.Split(xff, ",")
-			if len(parts) > 0 {
-				ip = strings.TrimSpace(parts[0])
+		// Check if it's an API request with a key
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey == "" {
+			if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+				apiKey = strings.TrimPrefix(auth, "Bearer ")
 			}
 		}
 
-		path := r.URL.Path
-		isSensitive := path == "/login" || path == "/setup" ||
-			strings.HasPrefix(path, "/form/submit/") ||
-			strings.HasPrefix(path, "/admin/users")
+		if apiKey != "" {
+			clientKey = "api_" + apiKey
+			limit = 3.0 // 3.0 tokens per second (180/min)
+			burst = 90.0
+		} else {
+			clientKey = "ip_" + getClientIP(r)
+			limit = 1.5 // 1.5 tokens per second (90/min)
+			burst = 45.0
+		}
 
-		mu.Lock()
+		limitersMu.Lock()
+		lim, exists := limiters[clientKey]
 		now := time.Now()
 
-		var (
-			limit     *ipLimit
-			exists    bool
-			maxTokens float64
-			refill    float64
-			bucketKey string
-		)
-
-		if isSensitive {
-			maxTokens = 5.0
-			refill = 0.1 // 1 token per 10 seconds
-			bucketKey = "s:" + ip
-			limit, exists = sensitiveLimits[bucketKey]
-		} else {
-			maxTokens = 120.0
-			refill = 2.0 // 2 tokens per second
-			bucketKey = ip
-			limit, exists = generalLimits[bucketKey]
-		}
-
 		if !exists {
-			limit = &ipLimit{
-				tokens:     maxTokens,
-				lastAccess: now,
+			lim = &limiter{
+				tokens:     burst,
+				lastRefill: now,
 			}
-			if isSensitive {
-				sensitiveLimits[bucketKey] = limit
-			} else {
-				generalLimits[bucketKey] = limit
-			}
+			limiters[clientKey] = lim
 		} else {
-			// Refill tokens based on elapsed time
-			duration := now.Sub(limit.lastAccess).Seconds()
-			limit.tokens += duration * refill
-			if limit.tokens > maxTokens {
-				limit.tokens = maxTokens
+			// Calculate refilled tokens
+			elapsed := now.Sub(lim.lastRefill).Seconds()
+			lim.tokens += elapsed * limit
+			if lim.tokens > burst {
+				lim.tokens = burst
 			}
-			limit.lastAccess = now
+			lim.lastRefill = now
 		}
 
-		if limit.tokens < 1.0 {
-			mu.Unlock()
-			if isSensitive {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error":"Çok fazla istek. Lütfen birkaç dakika bekleyin."}`))
-			} else {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`
-				<!DOCTYPE html>
-				<html>
-				<head>
-					<meta charset="utf-8">
-					<title>Çok Fazla İstek</title>
-					<meta name="viewport" content="width=device-width, initial-scale=1">
-					<style>
-						body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #FAF7F2; color: #50311f; }
-						.card { background: white; padding: 2.5rem; border-radius: 1.5rem; border: 1px solid #EAE6DF; box-shadow: 0 4px 20px rgba(0,0,0,0.02); max-width: 400px; text-align: center; }
-						h1 { font-size: 1.5rem; margin-bottom: 1rem; font-weight: 700; }
-						p { font-size: 0.95rem; color: #706a60; line-height: 1.5; margin-bottom: 1.5rem; }
-						.btn { background: #50311f; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 9999px; font-weight: 600; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
-					</style>
-				</head>
-				<body>
-					<div class="card">
-						<h1>Çok Fazla İstek (Rate Limit)</h1>
-						<p>Güvenliğimiz için kısa sürede çok fazla istek gönderdiniz. Lütfen birkaç dakika bekleyip tekrar deneyin.</p>
-						<a href="javascript:location.reload()" class="btn">Sayfayı Yenile</a>
-					</div>
-				</body>
-				</html>
-			`))
-			}
-			return
+		if lim.tokens >= 1.0 {
+			lim.tokens -= 1.0
+			limitersMu.Unlock()
+			next.ServeHTTP(w, r)
+		} else {
+			limitersMu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"error": "Too many requests. Please slow down."}`))
 		}
-
-		limit.tokens -= 1.0
-		mu.Unlock()
-
-		next.ServeHTTP(w, r)
 	})
 }

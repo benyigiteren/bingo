@@ -1,226 +1,158 @@
 package handlers
 
 import (
-	"encoding/json"
-	"gotree/db"
-	"gotree/middleware"
-	"golang.org/x/crypto/bcrypt"
 	"net/http"
-	"time"
+	"strings"
+
+	"bingo/db"
+	"bingo/middleware"
+	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthViewModel giriş ve kurulum ekranlarına hata mesajı aktarmak için kullanılır.
-type AuthViewModel struct {
-	Error string
-}
-
-// SetupGet kurulum ekranını gösterir.
-func SetupGet(w http.ResponseWriter, r *http.Request) {
-	has, err := db.HasUsers()
+// ShowSetup ilk açılışta Süper Yönetici kurulum sayfasını gösterir
+func ShowSetup(w http.ResponseWriter, r *http.Request) {
+	hasUsers, err := db.HasUsers()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
 		return
 	}
-	if has {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-	RenderTemplate(w, "setup.html", nil)
-}
 
-// SetupPost kurulum formunu işler ve ilk yöneticiyi oluşturur.
-func SetupPost(w http.ResponseWriter, r *http.Request) {
-	has, err := db.HasUsers()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if has {
+	if hasUsers {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
-	username := r.FormValue("username")
+	RenderTemplate(w, "setup.html", map[string]interface{}{
+		"Title": "Bingo - İlk Kurulum",
+	})
+}
+
+// ProcessSetup ilk Süper Yöneticiyi oluşturur
+func ProcessSetup(w http.ResponseWriter, r *http.Request) {
+	hasUsers, err := db.HasUsers()
+	if err != nil {
+		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
+		return
+	}
+
+	if hasUsers {
+		http.Error(w, "Yasak - Kayıtlar kapalıdır", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Yöntem izin verilmedi", http.StatusMethodNotAllowed)
+		return
+	}
+
+	username := strings.ToLower(strings.TrimSpace(r.FormValue("username")))
 	password := r.FormValue("password")
-	passwordConfirm := r.FormValue("password_confirm")
+
+	if username == "" || len(password) < 6 {
+		RenderTemplate(w, "setup.html", map[string]interface{}{
+			"Title": "Bingo - İlk Kurulum",
+			"Error": "Kullanıcı adı boş olamaz ve şifre en az 6 karakterden oluşmalıdır.",
+		})
+		return
+	}
+
+	user, err := db.CreateUser(username, password, "super_admin")
+	if err != nil {
+		RenderTemplate(w, "setup.html", map[string]interface{}{
+			"Title": "Bingo - İlk Kurulum",
+			"Error": "Süper yönetici oluşturulamadı: " + err.Error(),
+		})
+		return
+	}
+
+	// Oturum oluştur
+	middleware.CreateSession(w, user.ID)
+
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+}
+
+// ShowLogin giriş sayfasını gösterir
+func ShowLogin(w http.ResponseWriter, r *http.Request) {
+	// Oturum zaten varsa ve aktifse doğrudan panele yönlendir
+	user := middleware.GetLoggedUser(r)
+	if user != nil {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	hasUsers, err := db.HasUsers()
+	if err != nil {
+		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
+		return
+	}
+
+	// Kullanıcı yoksa kuruluma yönlendir
+	if !hasUsers {
+		http.Redirect(w, r, "/register", http.StatusSeeOther)
+		return
+	}
+
+	RenderTemplate(w, "login.html", map[string]interface{}{
+		"Title": "Bingo - Giriş Yap",
+	})
+}
+
+// ProcessLogin giriş kimlik doğrulamalarını yapar
+func ProcessLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Yöntem izin verilmedi", http.StatusMethodNotAllowed)
+		return
+	}
+
+	username := strings.ToLower(strings.TrimSpace(r.FormValue("username")))
+	password := r.FormValue("password")
 
 	if username == "" || password == "" {
-		RenderTemplate(w, "setup.html", AuthViewModel{Error: "Kullanıcı adı ve şifre boş bırakılamaz."})
+		RenderTemplate(w, "login.html", map[string]interface{}{
+			"Title": "Bingo - Giriş Yap",
+			"Error": "Kullanıcı adı ve şifre alanları zorunludur.",
+		})
 		return
 	}
-
-	if password != passwordConfirm {
-		RenderTemplate(w, "setup.html", AuthViewModel{Error: "Şifreler birbiriyle uyuşmuyor."})
-		return
-	}
-
-	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		RenderTemplate(w, "setup.html", AuthViewModel{Error: "Şifre işlenirken hata oluştu."})
-		return
-	}
-
-	// İlk kayıt olan kullanıcı role = 'superadmin' olur.
-	_, err = db.CreateUser(username, string(hashedBytes), "superadmin")
-	if err != nil {
-		RenderTemplate(w, "setup.html", AuthViewModel{Error: "Yönetici oluşturulurken hata: " + err.Error()})
-		return
-	}
-
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
-}
-
-// LoginGet giriş ekranını gösterir.
-func LoginGet(w http.ResponseWriter, r *http.Request) {
-	has, err := db.HasUsers()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !has {
-		http.Redirect(w, r, "/setup", http.StatusSeeOther)
-		return
-	}
-
-	RenderTemplate(w, "login.html", nil)
-}
-
-// LoginPost giriş işlemini kontrol eder ve oturum oluşturur.
-func LoginPost(w http.ResponseWriter, r *http.Request) {
-	username := r.FormValue("username")
-	password := r.FormValue("password")
 
 	user, err := db.GetUserByUsername(username)
 	if err != nil {
-		RenderTemplate(w, "login.html", AuthViewModel{Error: "Sistem hatası: " + err.Error()})
+		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
 		return
 	}
 
-	if user == nil {
-		RenderTemplate(w, "login.html", AuthViewModel{Error: "Geçersiz kullanıcı adı veya şifre."})
+	if user == nil || !user.IsActive {
+		RenderTemplate(w, "login.html", map[string]interface{}{
+			"Title": "Bingo - Giriş Yap",
+			"Error": "Geçersiz giriş bilgileri veya devre dışı bırakılmış hesap.",
+		})
+		return
+	}
+
+	// Şifreyi doğrula
+	err = db.DB.QueryRow("SELECT password_hash FROM users WHERE id = ?", user.ID).Scan(&user.PasswordHash)
+	if err != nil {
+		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
 		return
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
-		RenderTemplate(w, "login.html", AuthViewModel{Error: "Geçersiz kullanıcı adı veya şifre."})
+		RenderTemplate(w, "login.html", map[string]interface{}{
+			"Title": "Bingo - Giriş Yap",
+			"Error": "Geçersiz giriş bilgileri veya devre dışı bırakılmış hesap.",
+		})
 		return
 	}
 
-	// 24 saat geçerli oturum oluştur
-	token, err := db.CreateSession(user.ID, 24*time.Hour)
-	if err != nil {
-		RenderTemplate(w, "login.html", AuthViewModel{Error: "Oturum oluşturulurken hata oluştu."})
-		return
-	}
+	// Oturum oluştur
+	middleware.CreateSession(w, user.ID)
 
-	// Çerez ayarla
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session_token",
-		Value:    token,
-		Path:     "/",
-		Expires:  time.Now().Add(24 * time.Hour),
-		HttpOnly: true,
-		Secure:   false, // HTTP üzerinden de yerelde çalışabilmesi için false
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
-// Logout oturumu kapatır ve çerezi siler.
-func Logout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session_token")
-	if err == nil {
-		_ = db.DeleteSession(cookie.Value)
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session_token",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-	})
-
+// ProcessLogout oturumu kapatır
+func ProcessLogout(w http.ResponseWriter, r *http.Request) {
+	middleware.DestroySession(w, r)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
-}
-
-// ProfileUpdatePost kullanıcı adı ve/veya şifre değişikliğini işler.
-func ProfileUpdatePost(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUserContext(r)
-	if user == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Yetkisiz işlem"})
-		return
-	}
-
-	newUsername := r.FormValue("username")
-	currentPassword := r.FormValue("current_password")
-	newPassword := r.FormValue("new_password")
-	newPasswordConfirm := r.FormValue("new_password_confirm")
-
-	// Kullanıcı adı değişikliği
-	if newUsername != "" && newUsername != user.Username {
-		existingUser, _ := db.GetUserByUsername(newUsername)
-		if existingUser != nil {
-			w.WriteHeader(http.StatusConflict)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Bu kullanıcı adı zaten kullanılıyor"})
-			return
-		}
-		err := db.UpdateUsername(user.ID, newUsername)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Kullanıcı adı güncellenemedi"})
-			return
-		}
-		user.Username = newUsername
-	}
-
-	// Şifre değişikliği
-	if newPassword != "" {
-		if currentPassword == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Mevcut şifrenizi girin"})
-			return
-		}
-		if newPassword != newPasswordConfirm {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Yeni şifreler birbiriyle uyuşmuyor"})
-			return
-		}
-		if len(newPassword) < 6 {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Şifre en az 6 karakter olmalı"})
-			return
-		}
-
-		err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword))
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Mevcut şifre hatalı"})
-			return
-		}
-
-		hashedBytes, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Şifre işlenirken hata oluştu"})
-			return
-		}
-
-		err = db.UpdatePassword(user.ID, string(hashedBytes))
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Şifre güncellenemedi"})
-			return
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":  true,
-		"message":  "Profil başarıyla güncellendi",
-		"username": user.Username,
-	})
 }

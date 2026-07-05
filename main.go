@@ -1,171 +1,125 @@
 package main
 
 import (
-	"embed"
-	"io/fs"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"runtime"
-	"runtime/debug"
-	"time"
+	"path/filepath"
+	"strings"
 
-	"gotree/db"
-	"gotree/handlers"
-	"gotree/middleware"
+	"bingo/db"
+	"bingo/handlers"
+	"bingo/middleware"
 )
 
-//go:embed templates/*
-var templatesFS embed.FS
-
-//go:embed static/*
-var staticFS embed.FS
-
 func main() {
-	var defaultPort = "1907"
-	var defaultDBPath = "./gotree.db"
-
-	// Bellek Tüketimini Optimize Eden Arka Plan Rutini (GOGC ayarı ve FreeOSMemory)
-	go func() {
-		// Çöp toplama sıklığını arttırarak heap boyutunu küçük tut (RAM hedefi <25MB)
-		debug.SetGCPercent(20)
-		for {
-			time.Sleep(15 * time.Second)
-			runtime.GC()
-			debug.FreeOSMemory()
-		}
-	}()
-
-	// CLI Bayrakları
-	var portFlag string
-	var dbPathFlag string
-	
-	// go run veya go build sonrasında port ve db yollarını argümanlardan almak için flag tanımları
-	// standart flag kütüphanesi yerine basit argüman analizi veya flag kütüphanesini kullanabiliriz
-	// birden fazla çalıştırmada flag redefined hatası olmaması için flag kütüphanesini doğrudan ilklendiriyoruz
-	for i, arg := range os.Args {
-		if arg == "-port" && i+1 < len(os.Args) {
-			portFlag = os.Args[i+1]
-		}
-		if arg == "-db" && i+1 < len(os.Args) {
-			dbPathFlag = os.Args[i+1]
-		}
-	}
-
-	port := portFlag
+	// 1. Load Configurations from Env
+	port := os.Getenv("PORT")
 	if port == "" {
-		port = os.Getenv("PORT")
-	}
-	if port == "" {
-		port = defaultPort
+		port = "8080"
 	}
 
-	dbPath := dbPathFlag
+	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-		dbPath = os.Getenv("DB_PATH")
-	}
-	if dbPath == "" {
-		dbPath = defaultDBPath
+		dbPath = filepath.Join("data", "bingo.db")
 	}
 
-	// 1. Veritabanını ilklendir
+	// 2. Ensure Directories exist
+	dbDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		log.Fatalf("Failed to create database directory: %v", err)
+	}
+
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		log.Fatalf("Failed to create uploads directory: %v", err)
+	}
+
+	// 3. Initialize SQLite database (WAL enabled, schema created)
 	if err := db.InitDB(dbPath); err != nil {
-		log.Fatalf("Veritabanı başlatılamadı: %v", err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.DB.Close()
 
-	// 2. Gömülü HTML şablonlarını yükle
-	if err := handlers.LoadTemplates(templatesFS); err != nil {
-		log.Fatalf("Şablonlar yüklenemedi: %v", err)
+	// 4. Initialize HTML templates
+	if err := handlers.InitTemplates("templates"); err != nil {
+		log.Fatalf("Failed to initialize templates: %v", err)
 	}
 
-	// 3. Gömülü statik dosyaları ayarla
-	staticSub, err := fs.Sub(staticFS, "static")
-	if err != nil {
-		log.Fatalf("Statik dosya sistemi alt klasör oluşturma hatası: %v", err)
-	}
+	// 5. Start background memory cleanups
+	middleware.CleanupSessions()
+	middleware.CleanUpLimiters()
 
-	// 4. Uploads klasörünü oluştur ve ayarla (profil resimleri için)
-	if err := os.MkdirAll("./uploads", 0755); err != nil {
-		log.Fatalf("Uploads klasörü oluşturulamadı: %v", err)
-	}
-
-	// 5. HTTP Yönlendirici (Go 1.22+ ServeMux)
+	// 6. Router Setup (Go 1.22+ Standard Mux Routing)
 	mux := http.NewServeMux()
 
-	// Statik Dosyalar (Embedded)
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+	// Static Assets Server
+	fs := http.FileServer(http.Dir("./static"))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", fs))
 
-	// Uploads Klasörü (Profil Resimleri)
-	mux.Handle("GET /uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
+	// Setup & Admin Initialization
+	mux.HandleFunc("GET /register", handlers.ShowSetup)
+	mux.HandleFunc("POST /register", handlers.ProcessSetup)
 
-	// Kurulum (Setup) Ekranları
-	mux.HandleFunc("GET /setup", handlers.SetupGet)
-	mux.HandleFunc("POST /setup", handlers.SetupPost)
+	// Auth Actions
+	mux.HandleFunc("GET /login", handlers.ShowLogin)
+	mux.HandleFunc("POST /login", handlers.ProcessLogin)
+	mux.HandleFunc("GET /logout", handlers.ProcessLogout)
 
-	// Giriş & Çıkış İşlemleri
-	mux.HandleFunc("GET /login", handlers.LoginGet)
-	mux.HandleFunc("POST /login", handlers.LoginPost)
-	mux.HandleFunc("GET /logout", handlers.Logout)
+	// Developer / API Specs
+	mux.HandleFunc("GET /api", handlers.ShowAPIDocs)
+	mux.Handle("POST /api/upload", middleware.RateLimit(http.HandlerFunc(handlers.APIUploadHandler)))
 
-	// Yönlendirme ve İstatistik İzleme
-	mux.HandleFunc("GET /r/{id}", handlers.RedirectHandler)
-	mux.HandleFunc("GET /r/{id}/{platform}", handlers.RedirectHandler)
+	// User Workspace & Dashboard Actions
+	mux.Handle("GET /dashboard", middleware.RequireAuth(http.HandlerFunc(handlers.ShowDashboard)))
+	mux.Handle("POST /dashboard/upload", middleware.RequireAuth(middleware.RequireCSRF(http.HandlerFunc(handlers.WebUploadHandler))))
+	mux.Handle("POST /dashboard/create-text", middleware.RequireAuth(middleware.RequireCSRF(http.HandlerFunc(handlers.CreateTextHandler))))
+	mux.Handle("POST /dashboard/files/delete", middleware.RequireAuth(middleware.RequireCSRF(http.HandlerFunc(handlers.DeleteFileHandler))))
+	mux.Handle("POST /dashboard/users/create", middleware.RequireAuth(middleware.RequireSuperAdmin(middleware.RequireCSRF(http.HandlerFunc(handlers.CreateUserHandler)))))
+	mux.Handle("POST /dashboard/users/toggle", middleware.RequireAuth(middleware.RequireSuperAdmin(middleware.RequireCSRF(http.HandlerFunc(handlers.ToggleUserStatusHandler)))))
+	mux.Handle("POST /dashboard/users/delete", middleware.RequireAuth(middleware.RequireSuperAdmin(middleware.RequireCSRF(http.HandlerFunc(handlers.DeleteUserHandler)))))
+	mux.Handle("POST /dashboard/users/regenerate-key", middleware.RequireAuth(middleware.RequireCSRF(http.HandlerFunc(handlers.RegenerateAPIKeyHandler))))
 
-	// Yönetim Paneli Rotaları (Oturum kontrolü altındadır)
-	mux.Handle("GET /admin", middleware.RequireAuth(http.HandlerFunc(handlers.AdminGet)))
-	mux.Handle("POST /admin/page/create", middleware.RequireAuth(http.HandlerFunc(handlers.PageCreatePost)))
-	mux.Handle("POST /admin/page/update", middleware.RequireAuth(http.HandlerFunc(handlers.PageUpdatePost)))
-	mux.Handle("POST /admin/page/autosave", middleware.RequireAuth(http.HandlerFunc(handlers.PageAutosave)))
-	mux.Handle("POST /admin/block/create", middleware.RequireAuth(http.HandlerFunc(handlers.BlockCreatePost)))
-	mux.Handle("POST /admin/block/update", middleware.RequireAuth(http.HandlerFunc(handlers.BlockUpdatePost)))
-	mux.Handle("POST /admin/block/autosave", middleware.RequireAuth(http.HandlerFunc(handlers.BlockAutosave)))
-	mux.Handle("POST /admin/block/upload-image", middleware.RequireAuth(http.HandlerFunc(handlers.BlockUploadImage)))
-	mux.Handle("POST /admin/block/delete", middleware.RequireAuth(http.HandlerFunc(handlers.BlockDeletePost)))
-	mux.Handle("POST /admin/block/reorder", middleware.RequireAuth(http.HandlerFunc(handlers.BlockReorderPost)))
-	mux.Handle("POST /admin/api-key/regenerate", middleware.RequireAuth(http.HandlerFunc(handlers.APIKeyRegeneratePost)))
-	mux.Handle("POST /admin/users/create", middleware.RequireAuth(http.HandlerFunc(handlers.UserCreatePost)))
-	mux.Handle("POST /admin/users/delete", middleware.RequireAuth(http.HandlerFunc(handlers.UserDeletePost)))
-	mux.Handle("POST /admin/profile/update", middleware.RequireAuth(http.HandlerFunc(handlers.ProfileUpdatePost)))
+	// Catch-all Root Route
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			// Check if this is a user file share request (e.g. /username/filename.ext)
+			parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+			if len(parts) == 2 {
+				handlers.ServeFile(w, r)
+				return
+			}
+			http.NotFound(w, r)
+			return
+		}
 
-	// Yeni Profil/Kırpma ve Form Bloğu Yönetim Yönlendirmeleri
-	mux.Handle("POST /admin/page/upload-avatar", middleware.RequireAuth(http.HandlerFunc(handlers.PageUploadAvatar)))
-	mux.Handle("POST /admin/page/upload-bg", middleware.RequireAuth(http.HandlerFunc(handlers.PageUploadBg)))
-	mux.Handle("POST /admin/form-submissions/delete", middleware.RequireAuth(http.HandlerFunc(handlers.FormSubmissionDelete)))
-	mux.HandleFunc("POST /form/submit/{id}", handlers.FormSubmitHandler)
+		// If user is already logged in, redirect to workspace. Else, login.
+		user := middleware.GetLoggedUser(r)
+		if user != nil {
+			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	})
 
-	// API Geliştirici Dokümantasyonu (Etkileşimli ve Açık)
-	mux.HandleFunc("GET /api/docs", handlers.APIDocsGet)
-	mux.HandleFunc("GET /api/v1/help", handlers.APIHelp)
+	// Wrap server with a simple global logging and security header middleware
+	serverHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Log requests briefly
+		log.Printf("%s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
 
-	// API REST Uç Noktaları (X-API-Key veya Çerez doğrulaması zorunludur)
-	mux.Handle("GET /api/v1/page", middleware.RequireAuth(http.HandlerFunc(handlers.APIGetPage)))
-	mux.Handle("POST /api/v1/page", middleware.RequireAuth(http.HandlerFunc(handlers.APIUpdatePage)))
-	mux.Handle("PUT /api/v1/page", middleware.RequireAuth(http.HandlerFunc(handlers.APIUpdatePage)))
-	mux.Handle("GET /api/v1/blocks", middleware.RequireAuth(http.HandlerFunc(handlers.APIGetBlocks)))
-	mux.Handle("POST /api/v1/blocks", middleware.RequireAuth(http.HandlerFunc(handlers.APICreateBlock)))
-	mux.Handle("POST /api/v1/blocks/update", middleware.RequireAuth(http.HandlerFunc(handlers.APIUpdateBlock)))
-	mux.Handle("PUT /api/v1/blocks/update", middleware.RequireAuth(http.HandlerFunc(handlers.APIUpdateBlock)))
-	mux.Handle("POST /api/v1/blocks/reorder", middleware.RequireAuth(http.HandlerFunc(handlers.APIReorderBlocks)))
-	mux.Handle("DELETE /api/v1/blocks", middleware.RequireAuth(http.HandlerFunc(handlers.APIDeleteBlock)))
-	mux.Handle("GET /api/v1/stats", middleware.RequireAuth(http.HandlerFunc(handlers.APIGetStats)))
-	mux.Handle("GET /api/v1/form-submissions", middleware.RequireAuth(http.HandlerFunc(handlers.APIGetFormSubmissions)))
-	mux.Handle("DELETE /api/v1/form-submissions", middleware.RequireAuth(http.HandlerFunc(handlers.APIDeleteFormSubmission)))
-	mux.Handle("GET /api/v1/system/stats", middleware.RequireAuth(http.HandlerFunc(handlers.APIGetSystemStats)))
-	// Herkese açık profil endpoint'i (Auth gerekmez)
-	mux.HandleFunc("GET /api/v1/profile/{slug}", handlers.APIGetPublicProfile)
+		// Set default security headers
+		w.Header().Set("Server", "Bingo")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		
+		// If request is for a user file, don't restrict content types via CSP too harshly (e.g. scripts/styles might be served raw if desired)
+		if !strings.HasPrefix(r.URL.Path, "/static/") && !strings.Contains(r.URL.Path, ".") {
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:;")
+		}
 
-	// Ana Dizin Yönlendirmesi
-	mux.HandleFunc("GET /", handlers.IndexHandler)
+		mux.ServeHTTP(w, r)
+	})
 
-	// Biyografi Sayfaları (/{slug})
-	mux.HandleFunc("GET /{slug}", handlers.BioGet)
-
-	// Tüm istekleri kimlik doğrulama ve rate-limiting ara katmanından geçir
-	globalHandler := middleware.RateLimit(middleware.Authenticate(mux))
-
-	log.Printf("Gotree sunucusu :%s portunda dinleniyor...", port)
-	if err := http.ListenAndServe(":"+port, globalHandler); err != nil {
-		log.Fatalf("Sunucu hatası: %v", err)
-	}
+	// 7. Start Server
+	fmt.Printf("Bingo platform running on :%s...\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, serverHandler))
 }

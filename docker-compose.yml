@@ -1,19 +1,16 @@
 version: '3.8'
 
 services:
-  gotree:
-    build: .
-    container_name: gotree_app
-    ports:
-      - "1907:1907"
-    volumes:
-      - gotree_data:/app/data
-      - gotree_uploads:/app/uploads
+  bingo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bingo_app
     environment:
-      - PORT=1907
-      - DB_PATH=/app/data/gotree.db
+      - PORT=8080
+      - DB_PATH=/app/data/bingo.db
+    volumes:
+      # Persistent storage volumes for database and uploaded shares
+      - ./data:/app/data
+      - ./uploads:/app/uploads
     restart: unless-stopped
-
-volumes:
-  gotree_data:
-  gotree_uploads:

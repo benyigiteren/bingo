@@ -1,40 +1,48 @@
 {{ define "layout" }}
 <!DOCTYPE html>
-<html lang="tr" class="h-full">
+<html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ block "title" . }}Gotree{{ end }}</title>
-    <meta name="description" content="Gotree - Kişisel ve profesyonel bağlantılarınızı tek bir şık ve minimalist sayfada paylaşın.">
-    <!-- Tailwind CSS (derlenmiş dosya) -->
-    <link rel="stylesheet" href="/static/dist/style.css">
-    <!-- Fontlar -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Alpine.js -->
-    <script defer src="/static/js/alpine.min.js"></script>
-    <!-- Özel Başlık Kodları -->
-    {{ block "head" . }}{{ end }}
-    <style>
-        [x-cloak] {
-            display: none !important;
-        }
-        body {
-            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-        }
-        h1, h2, h3, h4, h5, h6 {
-            font-family: 'Outfit', system-ui, -apple-system, sans-serif;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ if .Title }}{{ .Title }}{{ else }}Bingo - Dosya Paylaşımı{{ end }}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/app.js"></script>
 </head>
-<body class="bg-[#FDFBF7] text-neutral-800 min-h-screen flex flex-col selection:bg-neutral-900/5 selection:text-neutral-900">
-    <!-- Arka Plan Grid Işıması (Subtle Ambient Light Grid) -->
-    <div class="fixed inset-0 pointer-events-none z-0 opacity-[0.04] bg-[linear-gradient(to_right,#A0A0A0_1px,transparent_1px),linear-gradient(to_bottom,#A0A0A0_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-    
-    <main class="flex-grow flex flex-col relative z-10">
-        {{ template "content" . }}
+<body>
+  <div class="app-container">
+    <header>
+      <a href="/" class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+        <span>Bingo</span>
+      </a>
+      <nav>
+        {{ if .User }}
+          <a href="/dashboard" class="mono-meta">Çalışma Alanı</a>
+          <a href="/api" class="mono-meta">API</a>
+          <span class="mono-meta" style="opacity: 0.6;">@{{ .User.Username }}</span>
+          <a href="/logout" class="btn btn-sm">Çıkış Yap</a>
+        {{ else }}
+          <a href="/api" class="mono-meta">API</a>
+          <a href="/login" class="btn btn-sm btn-primary">Giriş Yap</a>
+        {{ end }}
+      </nav>
+    </header>
+
+    <main>
+      {{ template "content" . }}
     </main>
+
+    <footer>
+      <div>BINGO &copy; 2026</div>
+      <div>SELF-HOSTED &middot; YÜKSEK PERFORMANS &middot; DÜŞÜK RAM</div>
+    </footer>
+  </div>
+  
+  <div id="toast-container"></div>
 </body>
 </html>
 {{ end }}
