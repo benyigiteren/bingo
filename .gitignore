@@ -19,3 +19,8 @@ desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+# Harness / agent artifacts
+.agents/
+skills-lock.json
+.backup/
