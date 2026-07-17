@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/bingo-banner.webp" alt="Bingo" width="200" height="200" />
+<img src="assets/bingo-banner.webp" alt="Bingo — Self-hosted dosya ve metin paylaşım platformu" width="100%" />
 
 # Bingo
 
