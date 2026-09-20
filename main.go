@@ -145,7 +145,7 @@ func main() {
 	mux.Handle("POST /dashboard/users/regenerate-key", middleware.RequireAuth(middleware.RequireCSRF(http.HandlerFunc(handlers.RegenerateAPIKeyHandler))))
 
 	// Catch-all Root Route
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			// Check if this is a user file share request (e.g. /username/filename.ext)
 			parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
