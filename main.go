@@ -48,29 +48,53 @@ func main() {
 	}
 	defer db.DB.Close()
 
-	// 3.1 Check for MCP CLI mode: 'bingo mcp --api-key=...'
-	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+	// 3.1 Check for MCP CLI mode: 'bingo mcp', 'bingo --mcp', etc.
+	isMCPCli := false
+	for _, arg := range os.Args[1:] {
+		if arg == "mcp" || arg == "--mcp" || arg == "-mcp" {
+			isMCPCli = true
+			break
+		}
+	}
+
+	if isMCPCli {
 		apiKey := ""
 		for i, arg := range os.Args {
 			if strings.HasPrefix(arg, "--api-key=") {
 				apiKey = strings.TrimPrefix(arg, "--api-key=")
-			} else if arg == "--api-key" && i+1 < len(os.Args) {
+			} else if (arg == "--api-key" || arg == "-api-key" || arg == "--key" || arg == "-key" || arg == "-k") && i+1 < len(os.Args) {
 				apiKey = os.Args[i+1]
+			} else if strings.HasPrefix(arg, "--key=") || strings.HasPrefix(arg, "-key=") {
+				apiKey = strings.TrimPrefix(strings.TrimPrefix(arg, "--key="), "-key=")
 			}
 		}
 		if apiKey == "" {
 			apiKey = os.Getenv("BINGO_API_KEY")
 		}
-
 		if apiKey == "" {
-			fmt.Fprintln(os.Stderr, "Error: Missing API key. Provide via --api-key=<key> or BINGO_API_KEY environment variable.")
-			os.Exit(1)
+			apiKey = os.Getenv("API_KEY")
+		}
+		if apiKey == "" {
+			apiKey = os.Getenv("MCP_API_KEY")
 		}
 
-		user, err := db.GetUserByAPIKey(apiKey)
-		if err != nil || user == nil {
-			fmt.Fprintf(os.Stderr, "Error: Invalid API key: %v\n", err)
-			os.Exit(1)
+		var user *db.User
+		var err error
+		if apiKey != "" {
+			user, err = db.GetUserByAPIKey(apiKey)
+			if err != nil || user == nil {
+				fmt.Fprintf(os.Stderr, "Error: Invalid API key: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			// Auto-fallback: if only 1 user exists in local database, use it automatically for local stdio
+			users, err := db.GetUsers()
+			if err == nil && len(users) > 0 {
+				user = &users[0]
+			} else {
+				fmt.Fprintln(os.Stderr, "Error: Missing API key. Provide via --api-key=<key> or BINGO_API_KEY environment variable.")
+				os.Exit(1)
+			}
 		}
 
 		baseURL := os.Getenv("BINGO_BASE_URL")
@@ -127,12 +151,27 @@ func main() {
 	mux.HandleFunc("GET /api", handlers.ShowAPIDocs)
 	mux.Handle("POST /api/upload", middleware.RateLimit(http.HandlerFunc(handlers.APIUploadHandler)))
 
-	// Model Context Protocol (MCP) Endpoints (universal HTTP SSE & direct JSON-RPC)
+	// Model Context Protocol (MCP) Endpoints (universal HTTP SSE, Streamable HTTP & direct JSON-RPC)
 	mux.HandleFunc("GET /mcp", handlers.MCPHandler)
 	mux.HandleFunc("POST /mcp", handlers.MCPHandler)
+	mux.HandleFunc("HEAD /mcp", handlers.MCPHandler)
+	mux.HandleFunc("DELETE /mcp", handlers.MCPHandler)
+	mux.HandleFunc("GET /sse", handlers.MCPHandler)
+	mux.HandleFunc("GET /mcp/sse", handlers.MCPHandler)
 	mux.HandleFunc("POST /mcp/messages", handlers.MCPHandler)
+	mux.HandleFunc("POST /messages", handlers.MCPHandler)
 	mux.HandleFunc("OPTIONS /mcp", handlers.MCPHandler)
 	mux.HandleFunc("OPTIONS /mcp/messages", handlers.MCPHandler)
+	mux.HandleFunc("OPTIONS /sse", handlers.MCPHandler)
+	mux.HandleFunc("OPTIONS /mcp/sse", handlers.MCPHandler)
+	mux.HandleFunc("OPTIONS /messages", handlers.MCPHandler)
+
+	// MCP Discovery & Well-Known Endpoints (RFC 8615 & MCP Specification)
+	mux.HandleFunc("GET /.well-known/mcp", handlers.MCPDiscoveryHandler)
+	mux.HandleFunc("GET /.well-known/mcp.json", handlers.MCPDiscoveryHandler)
+	mux.HandleFunc("GET /mcp/manifest.json", handlers.MCPDiscoveryHandler)
+	mux.HandleFunc("OPTIONS /.well-known/mcp", handlers.MCPDiscoveryHandler)
+	mux.HandleFunc("OPTIONS /.well-known/mcp.json", handlers.MCPDiscoveryHandler)
 
 	// User Workspace & Dashboard Actions
 	mux.Handle("GET /dashboard", middleware.RequireAuth(http.HandlerFunc(handlers.ShowDashboard)))

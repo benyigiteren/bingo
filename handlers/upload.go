@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -150,7 +151,15 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := getUniqueFilename(user.ID, user.Username, header.Filename)
+	chosenName := header.Filename
+	if custom := strings.TrimSpace(r.FormValue("filename")); custom != "" {
+		if filepath.Ext(custom) == "" && filepath.Ext(header.Filename) != "" {
+			custom += filepath.Ext(header.Filename)
+		}
+		chosenName = custom
+	}
+
+	filename := getUniqueFilename(user.ID, user.Username, chosenName)
 	targetPath := filepath.Join(userDir, filename)
 
 	outFile, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
@@ -171,6 +180,13 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mimeType := header.Header.Get("Content-Type")
+	if mimeType == "" || mimeType == "application/octet-stream" {
+		if ext := filepath.Ext(filename); ext != "" {
+			if m := mime.TypeByExtension(ext); m != "" {
+				mimeType = m
+			}
+		}
+	}
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
@@ -180,7 +196,7 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 	isBurn := r.FormValue("is_burn") == "1" || r.FormValue("is_burn") == "true"
 	password := strings.TrimSpace(r.FormValue("password"))
 
-	dbFile, err := db.CreateFileWithOpts(user.ID, filename, header.Filename, written, mimeType, db.FileOptions{
+	dbFile, err := db.CreateFileWithOpts(user.ID, filename, chosenName, written, mimeType, db.FileOptions{
 		ExpiresAt: expiresAt,
 		IsBurn:    isBurn,
 		Password:  password,
@@ -429,6 +445,13 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 		defer file.Close()
 
 		originalName = header.Filename
+		if custom := strings.TrimSpace(r.FormValue("filename")); custom != "" {
+			if filepath.Ext(custom) == "" && filepath.Ext(header.Filename) != "" {
+				custom += filepath.Ext(header.Filename)
+			}
+			originalName = custom
+		}
+
 		filename = getUniqueFilename(user.ID, user.Username, originalName)
 		targetPath := filepath.Join(userDir, filename)
 
@@ -450,6 +473,13 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		mimeType = header.Header.Get("Content-Type")
+		if mimeType == "" || mimeType == "application/octet-stream" {
+			if ext := filepath.Ext(filename); ext != "" {
+				if m := mime.TypeByExtension(ext); m != "" {
+					mimeType = m
+				}
+			}
+		}
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}

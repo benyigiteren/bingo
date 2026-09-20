@@ -168,19 +168,32 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
   }
 }`, mcpURL)
 
+	geminiCliCmd := fmt.Sprintf("gemini mcp add bingo %s", mcpURL)
+
+	stdioConfig := fmt.Sprintf(`{
+  "mcpServers": {
+    "bingo": {
+      "command": "bingo",
+      "args": ["mcp", "--api-key=%s"]
+    }
+  }
+}`, user.APIKey)
+
 	data := map[string]interface{}{
-		"Title":        "Çalışma Alanı",
-		"User":         user,
-		"Files":        uiFiles,
-		"TotalFiles":   totalFiles,
-		"TotalSize":    PrettySize(totalSize),
-		"TotalViews":   totalViews,
-		"MaxUploadMB":  GetMaxUploadSizeMB(),
-		"CsrfToken":    csrfToken,
-		"BaseURL":      baseURL,
-		"MCPURL":       mcpURL,
-		"ClaudeConfig": claudeConfig,
-		"CursorConfig": cursorConfig,
+		"Title":         "Çalışma Alanı",
+		"User":          user,
+		"Files":         uiFiles,
+		"TotalFiles":    totalFiles,
+		"TotalSize":     PrettySize(totalSize),
+		"TotalViews":    totalViews,
+		"MaxUploadMB":   GetMaxUploadSizeMB(),
+		"CsrfToken":     csrfToken,
+		"BaseURL":       baseURL,
+		"MCPURL":        mcpURL,
+		"ClaudeConfig":  claudeConfig,
+		"CursorConfig":  cursorConfig,
+		"GeminiCliCmd":  geminiCliCmd,
+		"StdioConfig":   stdioConfig,
 	}
 
 	if user.Role == "super_admin" {

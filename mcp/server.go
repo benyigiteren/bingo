@@ -44,6 +44,8 @@ func (s *Server) ProcessRequest(req *Request) *Response {
 	switch req.Method {
 	case "initialize":
 		return s.handleInitialize(req)
+	case "notifications/initialized", "initialized":
+		return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
 	case "ping":
 		return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
 	case "tools/list":
@@ -54,6 +56,16 @@ func (s *Server) ProcessRequest(req *Request) *Response {
 		return s.handleResourcesList(req)
 	case "resources/read":
 		return s.handleResourcesRead(req)
+	case "resources/templates/list":
+		return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"resourceTemplates": []any{}}}
+	case "prompts/list":
+		return s.handlePromptsList(req)
+	case "prompts/get":
+		return s.handlePromptsGet(req)
+	case "logging/setLevel":
+		return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
+	case "completion/complete":
+		return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"completion": map[string]any{"values": []string{}}}}
 	default:
 		return &Response{
 			JSONRPC: "2.0",
@@ -67,20 +79,71 @@ func (s *Server) ProcessRequest(req *Request) *Response {
 }
 
 func (s *Server) handleInitialize(req *Request) *Response {
+	protoVer := "2024-11-05"
+	if req.Params != nil {
+		var p struct {
+			ProtocolVersion string `json:"protocolVersion"`
+		}
+		if err := json.Unmarshal(req.Params, &p); err == nil && p.ProtocolVersion != "" {
+			protoVer = p.ProtocolVersion
+		}
+	}
+
 	result := InitializeResult{
-		ProtocolVersion: "2024-11-05",
+		ProtocolVersion: protoVer,
 		Capabilities: ServerCapabilities{
 			Tools:     &ToolsCapability{ListChanged: false},
 			Resources: &ResourcesCapability{Subscribe: false, ListChanged: false},
 			Prompts:   &PromptsCapability{ListChanged: false},
 		},
 		ServerInfo: ServerInfo{
-			Name:    "bingo-mcp",
+			Name:    "bingo",
 			Version: "1.0.0",
 		},
 		Instructions: "Bingo is a self-hosted Pastebin & File Vault. Use bingo_share_paste to instantly publish code snippets, debug logs, markdown notes, and files with optional TTL expiration, burn-after-reading, or password protection. Every upload returns an immediate, formatted live link.",
 	}
 	return &Response{JSONRPC: "2.0", ID: req.ID, Result: result}
+}
+
+func (s *Server) handlePromptsList(req *Request) *Response {
+	prompts := []map[string]any{
+		{
+			"name":        "share_code_snippet",
+			"description": "Share a code snippet or solution on Bingo and get a shareable link",
+			"arguments": []map[string]any{
+				{
+					"name":        "code",
+					"description": "The source code to share",
+					"required":    true,
+				},
+				{
+					"name":        "language",
+					"description": "Programming language (e.g. go, python, javascript)",
+					"required":    false,
+				},
+			},
+		},
+	}
+	return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"prompts": prompts}}
+}
+
+func (s *Server) handlePromptsGet(req *Request) *Response {
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result: map[string]any{
+			"description": "Share code snippet prompt",
+			"messages": []map[string]any{
+				{
+					"role": "user",
+					"content": map[string]any{
+						"type": "text",
+						"text": "Please share the provided code snippet to Bingo using bingo_share_paste.",
+					},
+				},
+			},
+		},
+	}
 }
 
 func (s *Server) handleToolsList(req *Request) *Response {

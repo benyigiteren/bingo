@@ -27,12 +27,99 @@
 
         <!-- Mod 1: Dosya Sürükle Bırak / Seç -->
         <div id="hero-upload-pane">
+          <!-- 1.1 Boş Durum: Sürükle Bırak Alanı -->
           <div class="hero-dropzone" id="upload-zone">
             <i class="ph-light ph-upload-simple dropzone-icon" style="font-size: 38px; display: inline-block; margin-bottom: 8px;"></i>
             <div class="dropzone-title">Dosyaları buraya sürükleyip bırakın</div>
             <div class="dropzone-hint">Görseller, metinler, kodlar, loglar, arşivler (Maks. {{ .MaxUploadMB }} MB)</div>
             <span class="dropzone-kbd">veya doğrudan panodan yapıştırın (Ctrl + V)</span>
             <input type="file" id="file-input" multiple style="display: none;">
+          </div>
+
+          <!-- 1.2 Dosya Seçildiğinde / Bırakıldığında: Hazırlama ve Önizleme Sahnesi -->
+          <div id="file-stage-card" class="file-stage-card" style="display: none;">
+            <!-- Dosya Bilgi ve Önizleme Başlığı -->
+            <div class="staged-file-header">
+              <div class="staged-file-preview-box" id="staged-preview-box">
+                <img id="staged-img-preview" src="" alt="Önizleme" style="display: none;">
+                <i id="staged-icon-preview" class="ph-light ph-file staged-file-icon"></i>
+              </div>
+              <div class="staged-file-meta">
+                <div class="staged-file-title-row">
+                  <span class="staged-file-orig-name" id="staged-orig-name">dosya_adi.png</span>
+                  <span class="staged-file-size-badge" id="staged-file-size">0 KB</span>
+                </div>
+                <div class="staged-file-subtext" id="staged-file-subtext">Dosya yüklendiğinde bağlantı anında oluşturulur.</div>
+              </div>
+              <button type="button" class="btn-action staged-btn-cancel" onclick="resetStagedFile()" title="Dosyayı İptal Et / Farklı Seç">
+                <i class="ph-light ph-x"></i>
+                Vazgeç
+              </button>
+            </div>
+
+            <!-- Çoklu Dosya Listesi (birden fazla dosya varsa) -->
+            <div id="staged-multi-list" class="staged-multi-list" style="display: none;"></div>
+
+            <!-- Özel Dosya Adı / Başlık Girişi -->
+            <div class="field-group" id="staged-filename-group" style="margin-top: 4px;">
+              <label class="field-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Özel Dosya Adı / Başlık</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">(İsteğe bağlı)</span>
+              </label>
+              <input type="text" id="staged-filename-input" class="studio-input" placeholder="Dosya adı (örn: rapor.pdf, logo.png)" autocomplete="off">
+            </div>
+
+            <!-- Gelişmiş Seçenekler Akordiyonu (TTL & Şifre & Burn) -->
+            <div class="accordion-box" style="margin-top: 4px;">
+              <button type="button" class="accordion-header-btn" id="upload-accordion-toggle-btn" onclick="toggleUploadAdvancedOptions()">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <i class="ph-light ph-sliders-horizontal" style="font-size: 15px;"></i>
+                  <strong>Gelişmiş Seçenekler</strong>
+                  <span class="accordion-subtext">(TTL, Burn &amp; Şifre Koruması)</span>
+                </div>
+                <svg class="accordion-chevron" id="upload-accordion-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+
+              <div class="accordion-content" id="upload-accordion-content">
+                <div class="field-group">
+                  <label class="field-label">Geçerlilik Süresi (TTL)</label>
+                  <select id="upload-ttl-select" class="studio-select">
+                    <option value="forever">Süresiz (Kalıcı)</option>
+                    <option value="10m">10 Dakika</option>
+                    <option value="1h">1 Saat</option>
+                    <option value="1d">1 Gün</option>
+                    <option value="1w">1 Hafta</option>
+                    <option value="30d">30 Gün</option>
+                  </select>
+                </div>
+
+                <div class="field-group">
+                  <label class="field-label">Şifre Koruması (İsteğe Bağlı)</label>
+                  <input type="password" id="upload-password-input" class="studio-input" placeholder="Erişim şifresi belirleyin" autocomplete="new-password">
+                </div>
+
+                <div class="field-group" style="justify-content: flex-end; padding-bottom: 8px;">
+                  <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main); cursor: pointer;">
+                    <input type="checkbox" id="upload-burn-checkbox" value="true">
+                    <span style="display: flex; align-items: center; gap: 5px;">
+                      <i class="ph-light ph-fire" style="color: #ef4444; font-size: 14px;"></i>
+                      Okunduktan Sonra Otomatik Sil (Burn)
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Aksiyon Butonları -->
+            <div class="hero-action-bar" style="margin-top: 8px;">
+              <button type="button" class="btn-action" onclick="resetStagedFile()" style="padding: 10px 16px;">
+                Farklı Dosya Seç
+              </button>
+              <button type="button" class="btn-primary-action" id="btn-staged-upload" onclick="startStagedUpload()">
+                <i class="ph-light ph-upload-simple" style="font-size: 16px;"></i>
+                <span id="btn-staged-upload-text">Yükle ve Paylaş</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -400,17 +487,39 @@
     <div class="mcp-box-section" style="margin-top: 18px;">
       <div class="mcp-box-header">
         <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-main);">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-          Standart Yapılandırma Formatı (mcp.json)
+          <i class="ph-light ph-code" style="font-size: 16px;"></i>
+          Yapılandırma Dosyası &amp; İstemci Formatı
         </div>
-        <button type="button" class="btn-api-action" style="height: 32px; padding: 0 12px; font-size: 12px;" onclick="copyText(document.getElementById('mcp-json-config').textContent, 'mcp.json kopyalandı!')">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-          JSON Kopyala
+        <button type="button" class="btn-api-action" style="height: 32px; padding: 0 12px; font-size: 12px;" onclick="copyText(document.getElementById('mcp-json-config').textContent, 'Yapılandırma kopyalandı!')">
+          <i class="ph-light ph-copy" style="font-size: 13px;"></i>
+          Kopyala
         </button>
       </div>
+
+      <!-- İstemci Seçim Hapları -->
+      <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;">
+        <button type="button" class="btn-action mcp-client-tab active" data-client="gemini" onclick="switchMCPFormat('gemini')" style="font-size: 11.5px; padding: 4px 10px;">
+          Gemini CLI / Cursor (SSE URL)
+        </button>
+        <button type="button" class="btn-action mcp-client-tab" data-client="claude" onclick="switchMCPFormat('claude')" style="font-size: 11.5px; padding: 4px 10px;">
+          Claude Desktop (mcp-remote)
+        </button>
+        <button type="button" class="btn-action mcp-client-tab" data-client="stdio" onclick="switchMCPFormat('stdio')" style="font-size: 11.5px; padding: 4px 10px;">
+          Yerel Terminal (Stdio)
+        </button>
+        <button type="button" class="btn-action mcp-client-tab" data-client="cli" onclick="switchMCPFormat('cli')" style="font-size: 11.5px; padding: 4px 10px;">
+          Gemini CLI Tek Komut
+        </button>
+      </div>
+
+      <!-- Gizli Ham Metinler -->
+      <div style="display: none;">
+        <span id="raw-mcp-gemini">{{ .CursorConfig }}</span>
+        <span id="raw-mcp-claude">{{ .ClaudeConfig }}</span>
+        <span id="raw-mcp-stdio">{{ .StdioConfig }}</span>
+        <span id="raw-mcp-cli">{{ .GeminiCliCmd }}</span>
+      </div>
+
       <div class="mcp-json-window">
         <pre id="mcp-json-config">{{ .CursorConfig }}</pre>
       </div>

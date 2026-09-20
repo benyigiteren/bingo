@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"bingo/db"
@@ -29,6 +30,13 @@ var (
 	sessionsMu sync.RWMutex
 	sessions   = make(map[string]*SSESession)
 )
+
+// GetSession retrieves an active SSESession by ID
+func GetSession(sessionID string) *SSESession {
+	sessionsMu.RLock()
+	defer sessionsMu.RUnlock()
+	return sessions[sessionID]
+}
 
 func generateSessionID() string {
 	b := make([]byte, 16)
@@ -84,8 +92,43 @@ func HandleStdio(user *db.User, baseURL, uploadsDir string) {
 func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, uploadsDir string) {
 	server := NewServer(user, baseURL, uploadsDir)
 
-	// Handle GET for Server-Sent Events (SSE)
+	// 1. Handle GET: Differentiate between SSE (text/event-stream) and standard HTTP GET (probe/metadata)
 	if r.Method == http.MethodGet {
+		accept := r.Header.Get("Accept")
+		isSSE := strings.Contains(accept, "text/event-stream") ||
+			r.URL.Query().Get("sse") == "true" ||
+			strings.HasSuffix(r.URL.Path, "/sse")
+
+		if !isSSE {
+			// Standard HTTP GET probe or metadata check (e.g. Gemini Spark or browser)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Mcp-Session-Id", "bingo-session")
+			w.Header().Set("X-Session-Id", "bingo-session")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":          "ready",
+				"name":            "bingo",
+				"version":         "1.0.0",
+				"protocolVersion": "2024-11-05",
+				"jsonrpc":         "2.0",
+				"result": map[string]any{
+					"status":          "ready",
+					"name":            "bingo",
+					"version":         "1.0.0",
+					"protocolVersion": "2024-11-05",
+					"capabilities": map[string]any{
+						"tools":     map[string]any{"listChanged": false},
+						"resources": map[string]any{"subscribe": false, "listChanged": false},
+						"prompts":   map[string]any{"listChanged": false},
+					},
+					"instructions": "Bingo is a self-hosted Pastebin & File Vault with Universal MCP support.",
+				},
+			})
+			return
+		}
+
+		// Client explicitly requested SSE
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
@@ -115,10 +158,13 @@ func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Mcp-Session-Id", sessionID)
+		w.Header().Set("X-Session-Id", sessionID)
 
 		// Send endpoint event according to MCP SSE specification
-		msgEndpoint := fmt.Sprintf("/mcp/messages?sessionId=%s", sessionID)
+		msgEndpoint := fmt.Sprintf("/mcp/messages?sessionId=%s&api_key=%s", sessionID, user.APIKey)
 		fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", msgEndpoint)
 		flusher.Flush()
 
@@ -127,13 +173,31 @@ func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, 
 		return
 	}
 
-	// Handle POST for direct JSON-RPC or SSE message posting
+	// 2. Handle POST for Streamable HTTP or SSE message posting
 	if r.Method == http.MethodPost {
-		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		sessionID := r.URL.Query().Get("sessionId")
+		if sessionID == "" {
+			sessionID = r.URL.Query().Get("session_id")
+		}
+		if sessionID == "" {
+			sessionID = r.Header.Get("X-Session-Id")
+		}
+		if sessionID == "" {
+			sessionID = r.Header.Get("Mcp-Session-Id")
+		}
+		if sessionID == "" {
+			sessionID = generateSessionID()
+		}
+
+		w.Header().Set("Mcp-Session-Id", sessionID)
+		w.Header().Set("X-Session-Id", sessionID)
+		w.Header().Set("Access-Control-Expose-Headers", "Content-Type, X-Session-Id, Mcp-Session-Id")
 
 		var req Request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(Response{
 				JSONRPC: "2.0",
@@ -143,30 +207,35 @@ func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, 
 			return
 		}
 
-		// Check if this belongs to an active SSE session
-		sessionID := r.URL.Query().Get("sessionId")
-		if sessionID != "" {
-			sessionsMu.RLock()
-			sess, exists := sessions[sessionID]
-			sessionsMu.RUnlock()
+		// Check if this belongs to an active SSE session (e.g. POST /mcp/messages?sessionId=...)
+		sessionsMu.RLock()
+		sess, exists := sessions[sessionID]
+		sessionsMu.RUnlock()
 
-			if exists {
-				resp := sess.Server.ProcessRequest(&req)
-				if resp != nil {
-					// Send response over SSE event stream
-					respBytes, _ := json.Marshal(resp)
-					fmt.Fprintf(sess.Writer, "event: message\ndata: %s\n\n", string(respBytes))
-					sess.Flusher.Flush()
-				}
-				w.WriteHeader(http.StatusAccepted)
-				_ = json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
-				return
+		if exists && sess != nil {
+			resp := sess.Server.ProcessRequest(&req)
+			if resp != nil {
+				// Send response over SSE event stream
+				respBytes, _ := json.Marshal(resp)
+				fmt.Fprintf(sess.Writer, "event: message\ndata: %s\n\n", string(respBytes))
+				sess.Flusher.Flush()
 			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusAccepted)
+			fmt.Fprint(w, "Accepted")
+			return
 		}
 
-		// Direct JSON-RPC POST request / response (standard HTTP transport)
+		// Streamable HTTP: Notification messages (no ID) return 202 Accepted per spec
+		if req.ID == nil && (strings.HasPrefix(req.Method, "notifications/") || req.Method == "initialized") {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+
+		// Direct JSON-RPC POST request / response (standard Streamable HTTP transport)
 		resp := server.ProcessRequest(&req)
 		if resp != nil {
+			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 		} else {
 			w.WriteHeader(http.StatusNoContent)
@@ -174,13 +243,21 @@ func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, 
 		return
 	}
 
-	if r.Method == http.MethodOptions {
+	// 3. Handle DELETE (Streamable HTTP session close)
+	if r.Method == http.MethodDelete {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	// 4. Handle OPTIONS
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, x-api-key, X-Session-Id, x-session-id, Mcp-Session-Id, mcp-session-id, Accept, Mcp-Method, Mcp-Name, X-Forwarded-Proto")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 }

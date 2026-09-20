@@ -316,16 +316,210 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 9. Sürükle & Bırak ile Dosya Yükleme
+  // 9. Sürükle & Bırak, Dosya Seçimi ve Hazırlama Sahnesi
   const uploadZone = document.getElementById('upload-zone');
   const fileInput = document.getElementById('file-input');
+  const fileStageCard = document.getElementById('file-stage-card');
+
+  window.stagedFiles = [];
+
+  function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function getFileIconClass(filename) {
+    const ext = (filename.split('.').pop() || '').toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) return 'ph-light ph-image';
+    if (['pdf'].includes(ext)) return 'ph-light ph-file-pdf';
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'ph-light ph-file-archive';
+    if (['go', 'py', 'js', 'ts', 'html', 'css', 'json', 'sql', 'sh', 'yaml', 'yml'].includes(ext)) return 'ph-light ph-file-code';
+    if (['txt', 'md', 'log'].includes(ext)) return 'ph-light ph-file-text';
+    if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 'ph-light ph-file-audio';
+    if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return 'ph-light ph-file-video';
+    return 'ph-light ph-file';
+  }
+
+  window.stageFiles = function(files) {
+    if (!files || files.length === 0) return;
+    window.stagedFiles = Array.from(files);
+
+    if (typeof switchHeroMode === 'function') {
+      switchHeroMode('upload');
+    }
+
+    if (uploadZone) uploadZone.style.display = 'none';
+    if (fileStageCard) fileStageCard.style.display = 'flex';
+
+    const stagedImg = document.getElementById('staged-img-preview');
+    const stagedIcon = document.getElementById('staged-icon-preview');
+    const origNameEl = document.getElementById('staged-orig-name');
+    const sizeBadgeEl = document.getElementById('staged-file-size');
+    const subtextEl = document.getElementById('staged-file-subtext');
+    const filenameInput = document.getElementById('staged-filename-input');
+    const filenameGroup = document.getElementById('staged-filename-group');
+    const multiList = document.getElementById('staged-multi-list');
+    const uploadBtnText = document.getElementById('btn-staged-upload-text');
+
+    if (window.stagedFiles.length === 1) {
+      const file = window.stagedFiles[0];
+      if (origNameEl) origNameEl.textContent = file.name;
+      if (sizeBadgeEl) sizeBadgeEl.textContent = formatFileSize(file.size);
+      if (subtextEl) subtextEl.textContent = file.type || 'Dosya hazır · Ayarları düzenleyip yükleyebilirsiniz';
+      if (filenameGroup) filenameGroup.style.display = 'block';
+      if (filenameInput) {
+        filenameInput.value = file.name;
+        filenameInput.focus();
+      }
+      if (multiList) multiList.style.display = 'none';
+      if (uploadBtnText) uploadBtnText.textContent = 'Yükle ve Paylaş';
+
+      if (file.type && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (stagedImg) {
+            stagedImg.src = e.target.result;
+            stagedImg.style.display = 'block';
+          }
+          if (stagedIcon) stagedIcon.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+      } else {
+        if (stagedImg) stagedImg.style.display = 'none';
+        if (stagedIcon) {
+          stagedIcon.className = getFileIconClass(file.name) + ' staged-file-icon';
+          stagedIcon.style.display = 'block';
+        }
+      }
+    } else {
+      if (origNameEl) origNameEl.textContent = `${window.stagedFiles.length} dosya seçildi`;
+      const totalBytes = window.stagedFiles.reduce((acc, f) => acc + f.size, 0);
+      if (sizeBadgeEl) sizeBadgeEl.textContent = `Toplam ${formatFileSize(totalBytes)}`;
+      if (subtextEl) subtextEl.textContent = 'Seçenekler (TTL, Şifre, Burn) tüm dosyalara uygulanacaktır';
+      if (filenameGroup) filenameGroup.style.display = 'none';
+      if (stagedImg) stagedImg.style.display = 'none';
+      if (stagedIcon) {
+        stagedIcon.className = 'ph-light ph-files staged-file-icon';
+        stagedIcon.style.display = 'block';
+      }
+      if (multiList) {
+        multiList.style.display = 'flex';
+        multiList.innerHTML = window.stagedFiles.map(f => `
+          <div class="staged-multi-item">
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${f.name}</span>
+            <span style="color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;">${formatFileSize(f.size)}</span>
+          </div>
+        `).join('');
+      }
+      if (uploadBtnText) uploadBtnText.textContent = `Tümünü Yükle (${window.stagedFiles.length})`;
+    }
+  };
+
+  window.resetStagedFile = function() {
+    window.stagedFiles = [];
+    if (fileInput) fileInput.value = '';
+    const filenameInput = document.getElementById('staged-filename-input');
+    if (filenameInput) filenameInput.value = '';
+    const passwordInput = document.getElementById('upload-password-input');
+    if (passwordInput) passwordInput.value = '';
+    const ttlSelect = document.getElementById('upload-ttl-select');
+    if (ttlSelect) ttlSelect.value = 'forever';
+    const burnCheckbox = document.getElementById('upload-burn-checkbox');
+    if (burnCheckbox) burnCheckbox.checked = false;
+
+    const accordionContent = document.getElementById('upload-accordion-content');
+    const accordionBtn = document.getElementById('upload-accordion-toggle-btn');
+    if (accordionContent) accordionContent.classList.remove('open');
+    if (accordionBtn) accordionBtn.classList.remove('open');
+
+    if (fileStageCard) fileStageCard.style.display = 'none';
+    if (uploadZone) uploadZone.style.display = 'block';
+  };
+
+  window.toggleUploadAdvancedOptions = function() {
+    const content = document.getElementById('upload-accordion-content');
+    const btn = document.getElementById('upload-accordion-toggle-btn');
+    if (content) content.classList.toggle('open');
+    if (btn) btn.classList.toggle('open');
+  };
+
+  window.startStagedUpload = async function() {
+    if (!window.stagedFiles || window.stagedFiles.length === 0) {
+      showToast('Yüklenecek dosya bulunamadı', 'error');
+      return;
+    }
+
+    const uploadBtn = document.getElementById('btn-staged-upload');
+    const uploadBtnText = document.getElementById('btn-staged-upload-text');
+    if (uploadBtn) uploadBtn.disabled = true;
+    if (uploadBtnText) uploadBtnText.textContent = 'Yükleniyor...';
+
+    const ttl = (document.getElementById('upload-ttl-select') || {}).value || 'forever';
+    const password = ((document.getElementById('upload-password-input') || {}).value || '').trim();
+    const isBurn = !!((document.getElementById('upload-burn-checkbox') || {}).checked);
+    const customFilename = ((document.getElementById('staged-filename-input') || {}).value || '').trim();
+    const csrfToken = (document.querySelector('input[name="csrf_token"]') || {}).value || '';
+
+    showToast(`${window.stagedFiles.length} dosya yükleniyor...`);
+    let completed = 0;
+    let hasError = false;
+    let lastUrl = '';
+
+    for (let i = 0; i < window.stagedFiles.length; i++) {
+      const file = window.stagedFiles[i];
+      const formData = new FormData();
+      formData.append('file', file);
+      if (csrfToken) formData.append('csrf_token', csrfToken);
+      if (ttl) formData.append('ttl', ttl);
+      if (password) formData.append('password', password);
+      if (isBurn) formData.append('is_burn', 'true');
+
+      if (window.stagedFiles.length === 1 && customFilename) {
+        formData.append('filename', customFilename);
+      }
+
+      try {
+        const resp = await fetch('/dashboard/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+          completed++;
+          if (data.url) lastUrl = data.url;
+        } else {
+          hasError = true;
+          showToast(data.error || `${file.name} yüklenemedi`, 'error');
+        }
+      } catch (err) {
+        hasError = true;
+        showToast(`Bağlantı hatası: ${file.name} yüklenemedi`, 'error');
+      }
+    }
+
+    if (uploadBtn) uploadBtn.disabled = false;
+    if (uploadBtnText) uploadBtnText.textContent = 'Yükle ve Paylaş';
+
+    if (completed > 0 && !hasError) {
+      showToast('Yükleme başarıyla tamamlandı!');
+      setTimeout(() => {
+        if (window.stagedFiles.length === 1 && lastUrl) {
+          window.location.href = lastUrl;
+        } else {
+          window.location.reload();
+        }
+      }, 600);
+    }
+  };
 
   if (uploadZone && fileInput) {
     uploadZone.addEventListener('click', () => fileInput.click());
 
     fileInput.addEventListener('change', () => {
       if (fileInput.files.length > 0) {
-        uploadFiles(Array.from(fileInput.files));
+        stageFiles(Array.from(fileInput.files));
       }
     });
 
@@ -346,48 +540,20 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadZone.addEventListener('drop', (e) => {
       const dt = e.dataTransfer;
       const files = dt.files;
-      if (files.length > 0) {
-        uploadFiles(Array.from(files));
+      if (files && files.length > 0) {
+        stageFiles(Array.from(files));
       }
     });
   }
 
-  function uploadFiles(files) {
-    if (files.length === 0) return;
-
-    showToast(`${files.length} dosya yükleniyor...`);
-    let completed = 0;
-
-    files.forEach(file => {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const csrfInput = document.querySelector('input[name="csrf_token"]');
-      if (csrfInput) {
-        formData.append('csrf_token', csrfInput.value);
-      }
-
-      fetch('/dashboard/upload', {
-        method: 'POST',
-        body: formData
-      })
-      .then(res => res.json())
-      .then(data => {
-        completed++;
-        if (data.success) {
-          if (completed === files.length) {
-            showToast('Yükleme başarıyla tamamlandı!');
-            setTimeout(() => window.location.reload(), 600);
-          }
-        } else {
-          showToast(data.error || `${file.name} yüklenemedi`, 'error');
-        }
-      })
-      .catch(() => {
-        showToast(`Hata: ${file.name} yüklenemedi`, 'error');
-      });
-    });
-  }
+  // Pencere genelinde sürükle bırak koruması
+  window.addEventListener('dragover', (e) => e.preventDefault(), false);
+  window.addEventListener('drop', (e) => {
+    if (e.target !== uploadZone && (!uploadZone || !uploadZone.contains(e.target)) && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      e.preventDefault();
+      stageFiles(Array.from(e.dataTransfer.files));
+    }
+  }, false);
 
   // 10. Global Pano Yapıştırma Dinleyicisi (Ctrl + V)
   document.addEventListener('paste', (e) => {
@@ -397,22 +563,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-    let foundImage = false;
+    let foundFile = false;
 
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
+      if (items[i].kind === 'file') {
         const blob = items[i].getAsFile();
         if (blob) {
-          foundImage = true;
-          const ext = blob.type.split('/')[1] || 'png';
-          const file = new File([blob], `ekran_goruntusu_${Date.now()}.${ext}`, { type: blob.type });
-          uploadFiles([file]);
+          foundFile = true;
+          let filename = blob.name;
+          if (!filename || filename === 'image.png' || filename === 'blob') {
+            const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+            const now = new Date();
+            const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '') + '_' + now.toTimeString().slice(0, 8).replace(/:/g, '');
+            filename = `ekran_goruntusu_${dateStr}.${ext}`;
+          }
+          const file = new File([blob], filename, { type: blob.type });
+          stageFiles([file]);
+          showToast('Görsel panodan aktarıldı, düzenleyip yükleyebilirsiniz.');
           break;
         }
       }
     }
 
-    if (!foundImage) {
+    if (!foundFile) {
       const text = e.clipboardData.getData('text');
       if (text && text.trim().length > 0) {
         switchHeroMode('editor');
@@ -561,5 +734,21 @@ document.addEventListener('DOMContentLoaded', () => {
       return false;
     }
     return true;
+  };
+
+  // 12. MCP Format Değiştirici (Gemini / Claude / Stdio / CLI)
+  window.switchMCPFormat = function(type) {
+    const rawElem = document.getElementById('raw-mcp-' + type);
+    const preElem = document.getElementById('mcp-json-config');
+    if (rawElem && preElem) {
+      preElem.textContent = rawElem.textContent.trim();
+    }
+    document.querySelectorAll('.mcp-client-tab').forEach(tab => {
+      if (tab.getAttribute('data-client') === type) {
+        tab.classList.add('active');
+      } else {
+        tab.classList.remove('active');
+      }
+    });
   };
 });
