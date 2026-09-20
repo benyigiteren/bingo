@@ -143,6 +143,8 @@ func main() {
 	mux.Handle("POST /dashboard/users/toggle", middleware.RequireAuth(middleware.RequireSuperAdmin(middleware.RequireCSRF(http.HandlerFunc(handlers.ToggleUserStatusHandler)))))
 	mux.Handle("POST /dashboard/users/delete", middleware.RequireAuth(middleware.RequireSuperAdmin(middleware.RequireCSRF(http.HandlerFunc(handlers.DeleteUserHandler)))))
 	mux.Handle("POST /dashboard/users/regenerate-key", middleware.RequireAuth(middleware.RequireCSRF(http.HandlerFunc(handlers.RegenerateAPIKeyHandler))))
+	mux.Handle("POST /dashboard/user/change-password", middleware.RequireAuth(middleware.RequireCSRF(http.HandlerFunc(handlers.ChangeSelfPasswordHandler))))
+	mux.Handle("POST /dashboard/settings/update", middleware.RequireAuth(middleware.RequireSuperAdmin(middleware.RequireCSRF(http.HandlerFunc(handlers.UpdateSettingsHandler)))))
 
 	// Catch-all Root Route
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +179,7 @@ func main() {
 		
 		// If request is for a user file, don't restrict content types via CSP too harshly (e.g. scripts/styles might be served raw if desired)
 		if !strings.HasPrefix(r.URL.Path, "/static/") && !strings.Contains(r.URL.Path, ".") {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:;")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com https://unpkg.com data:; script-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https:;")
 		}
 
 		mux.ServeHTTP(w, r)

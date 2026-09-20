@@ -131,9 +131,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const sidebarItems = document.querySelectorAll('.sidebar-nav-item');
   const sections = {
     'share': document.getElementById('section-share'),
-    'files': document.getElementById('section-share'),
+    'files': document.getElementById('section-files'),
     'mcp': document.getElementById('section-mcp'),
-    'users': document.getElementById('section-users')
+    'users': document.getElementById('section-users'),
+    'settings': document.getElementById('section-settings')
+  };
+
+  const tabTitles = {
+    'share': 'Yeni Paylaşım',
+    'files': 'İstatistikler',
+    'mcp': 'API & MCP',
+    'users': 'Kullanıcı Yönetimi',
+    'settings': 'Sistem Ayarları'
   };
 
   window.activateTab = function(tabName) {
@@ -141,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tabName = tabName.replace('#', '');
 
     sidebarItems.forEach(item => {
-      if (item.dataset.tab === tabName || (tabName === 'files' && item.dataset.tab === 'files')) {
+      if (item.dataset.tab === tabName) {
         item.classList.add('active');
       } else {
         item.classList.remove('active');
@@ -152,19 +161,18 @@ document.addEventListener('DOMContentLoaded', () => {
     Object.keys(sections).forEach(key => {
       const panel = sections[key];
       if (panel) {
-        if (key === tabName || (tabName === 'files' && key === 'share')) {
+        if (key === tabName) {
           panel.classList.add('active');
-        } else if (key !== 'files') {
+        } else {
           panel.classList.remove('active');
         }
       }
     });
 
-    if (tabName === 'files') {
-      const tableElem = document.getElementById('files-table-container');
-      if (tableElem) {
-        tableElem.scrollIntoView({ behavior: 'smooth' });
-      }
+    // Üst bar başlığını dinamik güncelle
+    const topbarSection = document.getElementById('topbar-active-section');
+    if (topbarSection && tabTitles[tabName]) {
+      topbarSection.textContent = tabTitles[tabName];
     }
   };
 
@@ -182,6 +190,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (backdrop) backdrop.classList.remove('open');
       }
     });
+  });
+
+  window.addEventListener('popstate', () => {
+    if (window.location.hash) {
+      activateTab(window.location.hash);
+    } else {
+      activateTab('share');
+    }
   });
 
   if (window.location.hash) {
@@ -229,6 +245,24 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.clipboard.writeText(text)
       .then(() => showToast(label))
       .catch(() => showToast('Kopyalama başarısız oldu', 'error'));
+  };
+
+  // 7.1 API Key Maskeleme Aç/Kapat (Eye Toggle)
+  window.toggleAPIKeyVisibility = function() {
+    const input = document.getElementById('user-api-key-input');
+    const icon = document.getElementById('eye-icon');
+    if (!input) return;
+    if (input.type === 'password') {
+      input.type = 'text';
+      if (icon) {
+        icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+      }
+    } else {
+      input.type = 'password';
+      if (icon) {
+        icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+      }
+    }
   };
 
   // 8. Tablo Arama & Kategori Filtreleme
@@ -438,5 +472,94 @@ document.addEventListener('DOMContentLoaded', () => {
   window.closeQRModal = function() {
     const modal = document.getElementById('qr-modal');
     if (modal) modal.classList.remove('active');
+  };
+
+  // 14. Şifre Değiştirme Modalı ve İşlemleri
+  window.openPasswordModal = function() {
+    const modal = document.getElementById('password-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    modal.classList.add('active');
+    const currInput = document.getElementById('modal-current-password');
+    if (currInput) setTimeout(() => currInput.focus(), 50);
+  };
+
+  window.closePasswordModal = function(e) {
+    if (e && e.target && e.target !== e.currentTarget) return;
+    const modal = document.getElementById('password-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.classList.remove('active');
+    const form = document.getElementById('change-password-modal-form');
+    if (form) form.reset();
+  };
+
+  window.handlePasswordChange = async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const currentPass = form.current_password.value;
+    const newPass = form.new_password.value;
+    const confirmPass = form.confirm_password.value;
+    const csrfToken = form.csrf_token.value;
+
+    if (newPass.length < 6) {
+      showToast('Yeni şifre en az 6 karakter olmalıdır.', 'error');
+      return;
+    }
+
+    if (newPass !== confirmPass) {
+      showToast('Yeni şifreler birbiriyle eşleşmiyor.', 'error');
+      return;
+    }
+
+    const submitBtn = document.getElementById('btn-modal-save-password');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const formData = new URLSearchParams();
+      formData.append('csrf_token', csrfToken);
+      formData.append('current_password', currentPass);
+      formData.append('new_password', newPass);
+      formData.append('confirm_password', confirmPass);
+
+      const resp = await fetch('/dashboard/user/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData.toString()
+      });
+
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        showToast(data.message || 'Şifreniz başarıyla değiştirildi.');
+        closePasswordModal();
+      } else {
+        showToast(data.error || 'Şifre değiştirilemedi.', 'error');
+      }
+    } catch (err) {
+      showToast('Bir bağlantı hatası oluştu.', 'error');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  };
+
+  window.handleSettingsPasswordSubmit = function(e) {
+    const form = e.target;
+    const newPass = form.new_password.value;
+    const confirmPass = form.confirm_password.value;
+    if (newPass.length < 6) {
+      showToast('Yeni şifre en az 6 karakter olmalıdır.', 'error');
+      e.preventDefault();
+      return false;
+    }
+    if (newPass !== confirmPass) {
+      showToast('Yeni şifreler birbiriyle eşleşmiyor.', 'error');
+      e.preventDefault();
+      return false;
+    }
+    return true;
   };
 });

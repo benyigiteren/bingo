@@ -8,9 +8,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"bingo/db"
 	"bingo/middleware"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ShowDashboard ana yönetim panelini gösterir
@@ -69,13 +72,73 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
 	type UIFile struct {
 		db.File
 		FormattedSize string
+		ViewPercent   int
+		IsExpired     bool
+		Category      string
+		FileExt       string
 	}
 
+	maxViews := 1
+	for _, f := range filesList {
+		if f.Views > maxViews {
+			maxViews = f.Views
+		}
+	}
+	if maxViews < 10 {
+		maxViews = 10
+	}
+
+	now := time.Now()
 	var uiFiles []UIFile
 	for _, f := range filesList {
+		ext := strings.ToLower(filepath.Ext(f.Filename))
+		cat := "other"
+		codeExts := map[string]bool{
+			".go": true, ".py": true, ".js": true, ".ts": true, ".jsx": true, ".tsx": true,
+			".rs": true, ".c": true, ".cpp": true, ".h": true, ".hpp": true, ".java": true,
+			".html": true, ".css": true, ".sh": true, ".bash": true, ".sql": true,
+			".yaml": true, ".yml": true, ".json": true, ".php": true, ".rb": true,
+		}
+		textExts := map[string]bool{
+			".md": true, ".txt": true, ".log": true, ".env": true, ".ini": true,
+			".conf": true, ".csv": true, ".tsv": true, ".xml": true, ".pdf": true,
+		}
+		imgExts := map[string]bool{
+			".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".gif": true,
+			".svg": true, ".bmp": true, ".ico": true,
+		}
+
+		if codeExts[ext] {
+			cat = "code"
+		} else if textExts[ext] || ext == "" {
+			cat = "text"
+		} else if imgExts[ext] {
+			cat = "images"
+		}
+
+		vPercent := 0
+		if f.Views > 0 {
+			vPercent = int(float64(f.Views) / float64(maxViews) * 100)
+			if vPercent < 8 {
+				vPercent = 8
+			} else if vPercent > 100 {
+				vPercent = 100
+			}
+		}
+
+		isExpired := f.ExpiresAt != nil && f.ExpiresAt.Before(now)
+		displayExt := strings.ToUpper(strings.TrimPrefix(ext, "."))
+		if displayExt == "" {
+			displayExt = "METİN"
+		}
+
 		uiFiles = append(uiFiles, UIFile{
 			File:          f,
 			FormattedSize: PrettySize(f.FileSize),
+			ViewPercent:   vPercent,
+			IsExpired:     isExpired,
+			Category:      cat,
+			FileExt:       displayExt,
 		})
 	}
 
@@ -106,12 +169,13 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
 }`, mcpURL)
 
 	data := map[string]interface{}{
-		"Title":        "Bingo - Çalışma Alanı",
+		"Title":        "Çalışma Alanı",
 		"User":         user,
 		"Files":        uiFiles,
 		"TotalFiles":   totalFiles,
 		"TotalSize":    PrettySize(totalSize),
 		"TotalViews":   totalViews,
+		"MaxUploadMB":  GetMaxUploadSizeMB(),
 		"CsrfToken":    csrfToken,
 		"BaseURL":      baseURL,
 		"MCPURL":       mcpURL,
@@ -293,7 +357,7 @@ func RegenerateAPIKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard#mcp", http.StatusSeeOther)
 }
 
 // DeleteFileHandler paylaşılan bir dosyayı siler
@@ -342,4 +406,109 @@ func DeleteFileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+}
+
+// UpdateSettingsHandler sistem ayarlarını günceller
+func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Yöntem izin verilmedi", http.StatusMethodNotAllowed)
+		return
+	}
+
+	admin := middleware.GetUserFromContext(r)
+	if admin == nil || admin.Role != "super_admin" {
+		http.Error(w, "Yetkisiz işlem", http.StatusForbidden)
+		return
+	}
+
+	maxMBStr := strings.TrimSpace(r.FormValue("max_upload_size_mb"))
+	maxMB, err := strconv.Atoi(maxMBStr)
+	if err != nil || maxMB <= 0 || maxMB > 10240 {
+		http.Error(w, "Geçersiz dosya boyutu sınırı (1 MB - 10240 MB arası olmalıdır)", http.StatusBadRequest)
+		return
+	}
+
+	if err := db.SetSetting("max_upload_size_mb", strconv.Itoa(maxMB)); err != nil {
+		http.Error(w, "Ayar kaydedilemedi: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/dashboard#settings", http.StatusSeeOther)
+}
+
+// ChangeSelfPasswordHandler kullanıcının kendi şifresini değiştirmesini sağlar
+func ChangeSelfPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Yöntem izin verilmedi", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUserFromContext(r)
+	if user == nil {
+		http.Error(w, "Oturum açılmamış", http.StatusUnauthorized)
+		return
+	}
+
+	isJSON := strings.Contains(r.Header.Get("Accept"), "application/json") || r.Header.Get("X-Requested-With") == "XMLHttpRequest"
+
+	sendResponse := func(success bool, msg string, statusCode int) {
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(statusCode)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": success,
+				"message": msg,
+				"error":   msg,
+			})
+			return
+		}
+		if !success {
+			http.Error(w, msg, statusCode)
+			return
+		}
+		http.Redirect(w, r, "/dashboard#settings", http.StatusSeeOther)
+	}
+
+	currentPassword := r.FormValue("current_password")
+	newPassword := r.FormValue("new_password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	if currentPassword == "" || newPassword == "" {
+		sendResponse(false, "Mevcut şifre ve yeni şifre boş bırakılamaz.", http.StatusBadRequest)
+		return
+	}
+
+	freshUser, err := db.GetUserByID(user.ID)
+	if err != nil || freshUser == nil {
+		sendResponse(false, "Kullanıcı kaydı bulunamadı.", http.StatusInternalServerError)
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(freshUser.PasswordHash), []byte(currentPassword)); err != nil {
+		sendResponse(false, "Mevcut şifreniz hatalı.", http.StatusBadRequest)
+		return
+	}
+
+	if len(newPassword) < 6 {
+		sendResponse(false, "Yeni şifre en az 6 karakter olmalıdır.", http.StatusBadRequest)
+		return
+	}
+
+	if newPassword != confirmPassword {
+		sendResponse(false, "Yeni şifreler birbiriyle eşleşmiyor.", http.StatusBadRequest)
+		return
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		sendResponse(false, "Şifre hashlenirken bir hata oluştu.", http.StatusInternalServerError)
+		return
+	}
+
+	if err := db.UpdateUserPassword(user.ID, string(newHash)); err != nil {
+		sendResponse(false, "Şifre güncellenirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sendResponse(true, "Şifreniz başarıyla değiştirildi.", http.StatusOK)
 }

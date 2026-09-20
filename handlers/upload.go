@@ -15,7 +15,19 @@ import (
 	"bingo/middleware"
 )
 
-const MaxUploadSize = 100 * 1024 * 1024 // 100 MB varsayılan limit
+// GetMaxUploadSizeMB sistemde yapılandırılmış MB cinsinden limiti döner (varsayılan: 50 MB)
+func GetMaxUploadSizeMB() int {
+	mb := db.GetSettingInt("max_upload_size_mb", 50)
+	if mb <= 0 {
+		return 50
+	}
+	return mb
+}
+
+// GetMaxUploadSize sistemde yapılandırılmış bayt cinsinden limiti döner
+func GetMaxUploadSize() int64 {
+	return int64(GetMaxUploadSizeMB()) * 1024 * 1024
+}
 
 var (
 	// Güvenli dosya adı kontrolü
@@ -110,12 +122,14 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, MaxUploadSize)
-	err := r.ParseMultipartForm(MaxUploadSize)
+	maxUploadSize := GetMaxUploadSize()
+	maxMB := GetMaxUploadSizeMB()
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+	err := r.ParseMultipartForm(maxUploadSize)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"success": false, "error": "Dosya boyutu 100MB sınırını aşıyor"}`))
+		w.Write([]byte(fmt.Sprintf(`{"success": false, "error": "Dosya boyutu %d MB sınırını aşıyor"}`, maxMB)))
 		return
 	}
 
@@ -394,12 +408,14 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 	} else if strings.HasPrefix(contentType, "multipart/form-data") {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxUploadSize)
-		err := r.ParseMultipartForm(MaxUploadSize)
+		maxUploadSize := GetMaxUploadSize()
+		maxMB := GetMaxUploadSizeMB()
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+		err := r.ParseMultipartForm(maxUploadSize)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: "Dosya boyutu 100MB sınırını aşıyor"})
+			json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: fmt.Sprintf("Dosya boyutu %d MB sınırını aşıyor", maxMB)})
 			return
 		}
 
@@ -444,7 +460,8 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Password:  strings.TrimSpace(r.FormValue("password")),
 		}
 	} else {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxUploadSize)
+		maxUploadSize := GetMaxUploadSize()
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 		bodyBytes, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")

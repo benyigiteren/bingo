@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -119,6 +120,16 @@ func createTables() error {
 	}
 
 	_, err = DB.Exec(filesTable)
+	if err != nil {
+		return err
+	}
+
+	settingsTable := `
+	CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);`
+	_, err = DB.Exec(settingsTable)
 	if err != nil {
 		return err
 	}
@@ -241,9 +252,9 @@ func GetUserByID(id int64) (*User, error) {
 	var u User
 	var isActiveInt int
 	err := DB.QueryRow(
-		"SELECT id, username, role, api_key, is_active, created_at FROM users WHERE id = ?",
+		"SELECT id, username, password_hash, role, api_key, is_active, created_at FROM users WHERE id = ?",
 		id,
-	).Scan(&u.ID, &u.Username, &u.Role, &u.APIKey, &isActiveInt, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.APIKey, &isActiveInt, &u.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -253,6 +264,12 @@ func GetUserByID(id int64) (*User, error) {
 	}
 	u.IsActive = isActiveInt == 1
 	return &u, nil
+}
+
+// UpdateUserPassword updates the password hash of a user
+func UpdateUserPassword(id int64, newHash string) error {
+	_, err := DB.Exec("UPDATE users SET password_hash = ? WHERE id = ?", newHash, id)
+	return err
 }
 
 // GetUsers fetches all users
@@ -629,4 +646,33 @@ func GetStats() (Stats, error) {
 	}
 
 	return s, nil
+}
+
+// GetSetting fetches a key-value setting or returns defaultValue
+func GetSetting(key, defaultValue string) string {
+	var val string
+	err := DB.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&val)
+	if err != nil {
+		return defaultValue
+	}
+	return val
+}
+
+// GetSettingInt fetches an integer setting or returns defaultValue
+func GetSettingInt(key string, defaultValue int) int {
+	valStr := GetSetting(key, "")
+	if valStr == "" {
+		return defaultValue
+	}
+	val, err := strconv.Atoi(valStr)
+	if err != nil {
+		return defaultValue
+	}
+	return val
+}
+
+// SetSetting saves or updates a key-value setting
+func SetSetting(key, value string) error {
+	_, err := DB.Exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value)
+	return err
 }

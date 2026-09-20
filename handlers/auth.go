@@ -23,7 +23,7 @@ func ShowSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RenderTemplate(w, "setup.html", map[string]interface{}{
-		"Title": "Bingo - İlk Kurulum",
+		"Title": "İlk Kurulum",
 	})
 }
 
@@ -50,7 +50,7 @@ func ProcessSetup(w http.ResponseWriter, r *http.Request) {
 
 	if username == "" || len(password) < 6 {
 		RenderTemplate(w, "setup.html", map[string]interface{}{
-			"Title": "Bingo - İlk Kurulum",
+			"Title": "İlk Kurulum",
 			"Error": "Kullanıcı adı boş olamaz ve şifre en az 6 karakterden oluşmalıdır.",
 		})
 		return
@@ -59,7 +59,7 @@ func ProcessSetup(w http.ResponseWriter, r *http.Request) {
 	user, err := db.CreateUser(username, password, "super_admin")
 	if err != nil {
 		RenderTemplate(w, "setup.html", map[string]interface{}{
-			"Title": "Bingo - İlk Kurulum",
+			"Title": "İlk Kurulum",
 			"Error": "Süper yönetici oluşturulamadı: " + err.Error(),
 		})
 		return
@@ -93,7 +93,7 @@ func ShowLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RenderTemplate(w, "login.html", map[string]interface{}{
-		"Title": "Bingo - Giriş Yap",
+		"Title": "Giriş Yap",
 	})
 }
 
@@ -109,7 +109,7 @@ func ProcessLogin(w http.ResponseWriter, r *http.Request) {
 
 	if username == "" || password == "" {
 		RenderTemplate(w, "login.html", map[string]interface{}{
-			"Title": "Bingo - Giriş Yap",
+			"Title": "Giriş Yap",
 			"Error": "Kullanıcı adı ve şifre alanları zorunludur.",
 		})
 		return
@@ -123,7 +123,7 @@ func ProcessLogin(w http.ResponseWriter, r *http.Request) {
 
 	if user == nil || !user.IsActive {
 		RenderTemplate(w, "login.html", map[string]interface{}{
-			"Title": "Bingo - Giriş Yap",
+			"Title": "Giriş Yap",
 			"Error": "Geçersiz giriş bilgileri veya devre dışı bırakılmış hesap.",
 		})
 		return
@@ -139,7 +139,7 @@ func ProcessLogin(w http.ResponseWriter, r *http.Request) {
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
 		RenderTemplate(w, "login.html", map[string]interface{}{
-			"Title": "Bingo - Giriş Yap",
+			"Title": "Giriş Yap",
 			"Error": "Geçersiz giriş bilgileri veya devre dışı bırakılmış hesap.",
 		})
 		return
