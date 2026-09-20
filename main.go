@@ -1,7 +1,9 @@
 package main
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +16,9 @@ import (
 	"bingo/mcp"
 	"bingo/middleware"
 )
+
+//go:embed static templates
+var embeddedFS embed.FS
 
 func main() {
 	// 1. Load Configurations from Env
@@ -77,9 +82,12 @@ func main() {
 		return
 	}
 
-	// 4. Initialize HTML templates
-	if err := handlers.InitTemplates("templates"); err != nil {
-		log.Fatalf("Failed to initialize templates: %v", err)
+	// 4. Initialize HTML templates (embedded filesystem for zero-disk dependency)
+	if err := handlers.InitEmbeddedTemplates(embeddedFS, "templates"); err != nil {
+		log.Printf("Embedded templates init fallback to disk: %v", err)
+		if err := handlers.InitTemplates("templates"); err != nil {
+			log.Fatalf("Failed to initialize templates: %v", err)
+		}
 	}
 
 	// 5. Start background memory and TTL cleanups
@@ -98,9 +106,13 @@ func main() {
 	// 6. Router Setup (Go 1.22+ Standard Mux Routing)
 	mux := http.NewServeMux()
 
-	// Static Assets Server
-	fs := http.FileServer(http.Dir("./static"))
-	mux.Handle("GET /static/", http.StripPrefix("/static/", fs))
+	// Static Assets Server (Embedded filesystem with fallback to disk)
+	staticSub, err := fs.Sub(embeddedFS, "static")
+	if err == nil {
+		mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+	} else {
+		mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	}
 
 	// Setup & Admin Initialization
 	mux.HandleFunc("GET /register", handlers.ShowSetup)
@@ -165,7 +177,7 @@ func main() {
 		
 		// If request is for a user file, don't restrict content types via CSP too harshly (e.g. scripts/styles might be served raw if desired)
 		if !strings.HasPrefix(r.URL.Path, "/static/") && !strings.Contains(r.URL.Path, ".") {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:;")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:;")
 		}
 
 		mux.ServeHTTP(w, r)
