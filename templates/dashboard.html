@@ -1,275 +1,382 @@
 {{ define "content" }}
-<!-- Minimal Header Status Bar (Anti-Slop: single clean line) -->
-<div class="meta-summary-bar">
-  <div class="meta-stats">
-    <span class="meta-stat-item"><strong>{{ .TotalFiles }}</strong> pastes</span>
-    <span class="meta-stat-sep">&middot;</span>
-    <span class="meta-stat-item"><strong>{{ .TotalSize }}</strong></span>
-    <span class="meta-stat-sep">&middot;</span>
-    <span class="meta-stat-item"><strong>{{ .TotalViews }}</strong> views</span>
-  </div>
-  <div style="display: flex; gap: 8px; align-items: center;">
-    <button class="btn btn-sm btn-primary" onclick="activateTab('#editor')">+ new paste</button>
-  </div>
-</div>
-
-<!-- Tabs -->
-<div class="subnav-tabs">
-  <a href="#files" class="tab-link active">pastes ({{ .TotalFiles }})</a>
-  <a href="#editor" class="tab-link">editor</a>
-  <a href="#mcp" class="tab-link">mcp hub</a>
-  {{ if .IsAdmin }}
-    <a href="#users" class="tab-link">users</a>
-  {{ end }}
-</div>
-
 <!-- ==========================================
-     TAB 1: PASTES & FILES LIST
+     BÖLÜM 1: PAYLAŞIM VE LİNKLER (ANA EKRAN)
      ========================================== -->
-<div id="files" class="tab-section active">
-  <!-- Compact Upload Strip -->
-  <div class="compact-upload-bar" id="upload-zone">
-    <div>
-      <div class="upload-text-lead">Drop files here to upload</div>
-      <div class="upload-text-sub">Images, text, code, logs, json (max 100mb)</div>
-    </div>
-    <div class="upload-kbd-badge">or press Ctrl + V anywhere</div>
-    <input type="file" id="file-input" multiple style="display: none;">
-  </div>
+<div id="section-share" class="section-panel active">
+  <!-- Ortaya Odaklanmış Hero Bölümü -->
+  <div class="hero-action-section">
+    <h1 class="hero-title">Bir Dosya veya Kod Paylaşın</h1>
+    <p class="hero-subtitle">
+      Metin, kod, log veya dosyalarınızı minimalist, sınırlandırılabilir, şifrelenebilir ve izlenebilir linklere dönüştürün.
+    </p>
 
-  <!-- Search & Filter Controls -->
-  <div class="filter-toolbar">
-    <input type="text" id="file-search-input" class="filter-search-input" placeholder="filter by name or ext...">
-    <div class="filter-category-pills">
-      <button class="category-pill active" data-filter="all">all</button>
-      <button class="category-pill" data-filter="code">code</button>
-      <button class="category-pill" data-filter="text">docs</button>
-      <button class="category-pill" data-filter="images">media</button>
-    </div>
-  </div>
+    <div class="hero-card">
+      <!-- Paylaşım Modu Değiştirici -->
+      <div class="hero-mode-tabs">
+        <button type="button" class="hero-tab-btn active" id="tab-btn-upload" onclick="switchHeroMode('upload')">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Dosya Yükle
+        </button>
+        <button type="button" class="hero-tab-btn" id="tab-btn-editor" onclick="switchHeroMode('editor')">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          Kod &amp; Metin Editörü
+        </button>
+      </div>
 
-  <!-- Paste Rows List -->
-  {{ if .Files }}
-  <div class="paste-list-container">
-    {{ range .Files }}
-    <div class="paste-row" data-filename="{{ .Filename }}">
-      <div class="paste-main-info">
-        <a href="/{{ .Username }}/{{ .Filename }}" class="paste-filename" target="_blank">{{ .Filename }}</a>
-        <div class="paste-meta-tags">
-          <span class="mono-tag">{{ .FormattedSize }}</span>
-          {{ if $.IsAdmin }}
-            <span class="mono-tag">@{{ .Username }}</span>
-          {{ end }}
-          {{ if .IsBurn }}
-            <span class="mono-tag" style="border-color: #662222; color: #ff8888;">burn</span>
-          {{ end }}
-          {{ if .HasPassword }}
-            <span class="mono-tag" style="border-color: #555555; color: #ffffff;">locked</span>
-          {{ end }}
-          {{ if .ExpiresAt }}
-            <span class="mono-tag" style="border-color: #444444;">ttl: {{ .ExpiresAt.Format "02.01 15:04" }}</span>
-          {{ end }}
-          <span style="color: var(--text-muted);">{{ .CreatedAt.Format "02.01.2006" }}</span>
-          <span style="color: var(--text-muted);">&middot; {{ .Views }}v</span>
+      <!-- Mod 1: Dosya Sürükle Bırak / Seç -->
+      <div id="hero-upload-pane">
+        <div class="hero-dropzone" id="upload-zone">
+          <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <div class="dropzone-title">Dosyaları buraya sürükleyin veya seçin</div>
+          <div class="dropzone-hint">Görseller, metinler, kodlar, loglar, arşivler (Maks. 100 MB)</div>
+          <span class="dropzone-kdb">veya doğrudan panodan yapıştırın (Ctrl + V)</span>
+          <input type="file" id="file-input" multiple style="display: none;">
         </div>
       </div>
 
-      <div class="paste-row-actions">
-        <button class="btn btn-sm" onclick="copyText(window.location.origin + '/{{ .Username }}/{{ .Filename }}', 'Link copied!')">copy</button>
-        <button class="btn btn-sm" onclick="openQRModal(window.location.origin + '/{{ .Username }}/{{ .Filename }}', '{{ .Filename }}')">qr</button>
-        <form action="/dashboard/files/delete" method="POST" style="margin: 0;" onsubmit="return confirm('Delete permanently?')">
-          <input type="hidden" name="csrf_token" value="{{ $.CsrfToken }}">
-          <input type="hidden" name="file_id" value="{{ .ID }}">
-          <button type="submit" class="btn btn-sm btn-danger">del</button>
-        </form>
-      </div>
-    </div>
-    {{ end }}
-  </div>
-  {{ else }}
-  <div class="paste-list-container">
-    <div class="empty-notice">
-      // no pastes yet. drop a file, press ctrl+v, or create one in the editor.
-    </div>
-  </div>
-  {{ end }}
-</div>
+      <!-- Mod 2: Kod ve Metin Yazma Formu -->
+      <form action="/dashboard/create-text" method="POST" id="hero-editor-pane" class="hero-editor-pane">
+        <input type="hidden" name="csrf_token" value="{{ .CsrfToken }}">
 
-<!-- ==========================================
-     TAB 2: EDITOR (SPLIT VIEW)
-     ========================================== -->
-<div id="editor" class="tab-section">
-  <form action="/dashboard/create-text" method="POST">
-    <input type="hidden" name="csrf_token" value="{{ .CsrfToken }}">
-    
-    <div class="editor-box">
-      <div class="editor-header-bar">
-        <div style="display: flex; gap: 8px; align-items: center; flex: 1; min-width: 200px;">
-          <input type="text" id="editor_filename" name="filename" class="editor-filename-input" placeholder="filename.ext (e.g. notes.md, app.go)" required>
+        <div class="editor-inputs-row">
+          <input type="text" id="editor_filename" name="filename" class="hero-input" style="flex: 2; min-width: 220px;" placeholder="Dosya adı (örn. notlar.md, app.go, veriler.json)" required>
           
-          <select id="editor_language" class="editor-select">
-            <option value=".txt">txt</option>
-            <option value=".md">markdown</option>
-            <option value=".go">go</option>
-            <option value=".py">python</option>
-            <option value=".js">javascript</option>
-            <option value=".ts">typescript</option>
-            <option value=".json">json</option>
-            <option value=".sql">sql</option>
-            <option value=".sh">bash</option>
-            <option value=".yaml">yaml</option>
+          <select id="editor_language" class="hero-select" style="flex: 1; min-width: 140px;">
+            <option value=".txt">Düz Metin (.txt)</option>
+            <option value=".md">Markdown (.md)</option>
+            <option value=".go">Go (.go)</option>
+            <option value=".py">Python (.py)</option>
+            <option value=".js">JavaScript (.js)</option>
+            <option value=".ts">TypeScript (.ts)</option>
+            <option value=".json">JSON (.json)</option>
+            <option value=".sql">SQL (.sql)</option>
+            <option value=".sh">Bash Shell (.sh)</option>
+            <option value=".yaml">YAML (.yaml)</option>
           </select>
         </div>
 
-        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary);">ttl:</span>
-            <select id="editor_ttl" name="ttl" class="editor-select">
-              <option value="forever">forever</option>
-              <option value="10m">10 min</option>
-              <option value="1h">1 hour</option>
-              <option value="1d">1 day</option>
-              <option value="1w">1 week</option>
-              <option value="30d">30 days</option>
-            </select>
+        <textarea id="editor_content" name="content" class="hero-textarea" placeholder="// Kodunuzu, notunuzu veya metninizi buraya yazın..." required></textarea>
+
+        <!-- Akordiyon (Gelişmiş Seçenekler) -->
+        <div class="hero-accordion">
+          <button type="button" class="accordion-toggle" id="accordion-toggle-btn" onclick="toggleAdvancedOptions()">
+            <span>Gelişmiş Seçenekler (TTL, Şifre &amp; Tek Seferlik Okuma)</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+
+          <div class="accordion-content" id="accordion-content">
+            <div class="field-group">
+              <label class="field-label">Geçerlilik Süresi (TTL)</label>
+              <select name="ttl" class="hero-select">
+                <option value="forever">Süresiz (Kalıcı)</option>
+                <option value="10m">10 Dakika</option>
+                <option value="1h">1 Saat</option>
+                <option value="1d">1 Gün</option>
+                <option value="1w">1 Hafta</option>
+                <option value="30d">30 Gün</option>
+              </select>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label">Şifre Koruması (İsteğe Bağlı)</label>
+              <input type="password" name="password" class="hero-input" placeholder="Erişim şifresi belirleyin">
+            </div>
+
+            <div class="field-group" style="justify-content: flex-end; padding-bottom: 8px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main); cursor: pointer;">
+                <input type="checkbox" name="is_burn" value="true">
+                <span>Okunduktan Sonra Otomatik Sil (Burn)</span>
+              </label>
+            </div>
           </div>
-
-          <input type="password" name="password" class="editor-filename-input" placeholder="password (optional)" style="width: 140px;">
-
-          <label style="display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12px; cursor: pointer; color: var(--text-secondary);">
-            <input type="checkbox" name="is_burn" value="true">
-            <span>burn after read</span>
-          </label>
         </div>
-      </div>
 
-      <div class="editor-split-grid">
-        <textarea id="editor_content" name="content" class="editor-textarea-pane" placeholder="// write or paste your code or markdown here..." required></textarea>
-        <div id="editor_preview" class="editor-preview-pane prose">
-          <p style="color: var(--text-muted); font-family: var(--font-mono); font-size: 12px;">// live markdown preview</p>
+        <div class="hero-action-bar">
+          <button type="submit" class="btn-hero-submit">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            Paylaşımı Oluştur
+          </button>
         </div>
-      </div>
+      </form>
+    </div>
+  </div>
 
-      <div class="editor-footer-bar">
-        <button type="submit" class="btn btn-primary">publish paste</button>
+  <!-- İstatistik Kartları (3'lü Izgara - Screenshot Birebir) -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon-wrapper">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+      </div>
+      <div class="stat-meta">
+        <span class="stat-number">{{ .TotalFiles }}</span>
+        <span class="stat-label">Kısaltılmış Link &amp; Paylaşım</span>
       </div>
     </div>
-  </form>
+
+    <div class="stat-card">
+      <div class="stat-icon-wrapper">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </div>
+      <div class="stat-meta">
+        <span class="stat-number">{{ .TotalViews }}</span>
+        <span class="stat-label">Toplam Tıklanma / Görüntülenme</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon-wrapper">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+      </div>
+      <div class="stat-meta">
+        <span class="stat-number">{{ .TotalSize }}</span>
+        <span class="stat-label">Kullanılan Depolama Alanı</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Paylaşımlar Tablosu (Screenshot Birebir) -->
+  <div class="data-table-card" id="files-table-container">
+    <div class="table-header-bar">
+      <h2 class="table-title">Linkleriniz &amp; Paylaşımlarınız</h2>
+
+      <div class="table-controls">
+        <div class="filter-pills">
+          <button type="button" class="filter-pill active" data-filter="all">Tümü</button>
+          <button type="button" class="filter-pill" data-filter="code">Kod</button>
+          <button type="button" class="filter-pill" data-filter="text">Belge</button>
+          <button type="button" class="filter-pill" data-filter="images">Medya</button>
+        </div>
+
+        <input type="text" id="file-search-input" class="table-search-input" placeholder="Linklerde ara...">
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="custom-table">
+        <thead>
+          <tr>
+            <th>KISA LİNK &amp; DURUM</th>
+            <th>BOYUT</th>
+            <th>GÖRÜNTÜLENME</th>
+            <th>OLUŞTURULMA</th>
+            <th style="text-align: right;">İŞLEMLER</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if .Files }}
+            {{ range .Files }}
+            <tr class="paste-row" data-filename="{{ .Filename }}">
+              <td>
+                <div class="file-cell">
+                  <a href="/{{ .Username }}/{{ .Filename }}" class="file-link" target="_blank">{{ .Filename }}</a>
+                  <div class="file-badges">
+                    {{ if $.IsAdmin }}
+                      <span class="badge">@{{ .Username }}</span>
+                    {{ end }}
+                    {{ if .IsBurn }}
+                      <span class="badge badge-burn">tek seferlik</span>
+                    {{ end }}
+                    {{ if .HasPassword }}
+                      <span class="badge badge-locked">şifreli</span>
+                    {{ end }}
+                    {{ if .ExpiresAt }}
+                      <span class="badge">Süre: {{ .ExpiresAt.Format "02.01 15:04" }}</span>
+                    {{ end }}
+                  </div>
+                </div>
+              </td>
+              <td>{{ .FormattedSize }}</td>
+              <td>{{ .Views }} tıklanma</td>
+              <td>{{ .CreatedAt.Format "02.01.2006 15:04" }}</td>
+              <td>
+                <div class="actions-cell">
+                  <button type="button" class="btn-action" onclick="copyText(window.location.origin + '/{{ .Username }}/{{ .Filename }}', 'Bağlantı kopyalandı!')">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Kopyala
+                  </button>
+                  <button type="button" class="btn-action" onclick="openQRModal(window.location.origin + '/{{ .Username }}/{{ .Filename }}', '{{ .Filename }}')">
+                    QR
+                  </button>
+                  <form action="/dashboard/files/delete" method="POST" style="margin: 0;" onsubmit="return confirm('Bu paylaşımı kalıcı olarak silmek istediğinize emin misiniz?')">
+                    <input type="hidden" name="csrf_token" value="{{ $.CsrfToken }}">
+                    <input type="hidden" name="file_id" value="{{ .ID }}">
+                    <button type="submit" class="btn-action btn-action-danger">Sil</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {{ end }}
+          {{ else }}
+            <tr>
+              <td colspan="5" class="empty-state">
+                Henüz paylaşımınız bulunmuyor. Yukarıdan bir dosya yükleyebilir veya kod oluşturabilirsiniz.
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <!-- ==========================================
-     TAB 3: MCP PROTOCOL HUB
+     BÖLÜM 2: API & MCP ENTEGRASYONU
      ========================================== -->
-<div id="mcp" class="tab-section">
-  <div class="clean-card" style="margin-bottom: 16px;">
-    <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">protocol 2024-11-05</div>
-    <h2 style="font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 8px;">Model Context Protocol (MCP) Server</h2>
-    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-      Bingo is a native MCP server. AI assistants (Claude Desktop, Cursor, Gemini, GPT, Antigravity) connect over HTTP SSE or local Stdio to autonomously share and fetch code pastes.
+<div id="section-mcp" class="section-panel">
+  <div class="clean-card">
+    <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Model Context Protocol (Protokol Sürümü: 2024-11-05)</div>
+    <h2 style="font-size: 18px; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">Yerel Yapay Zeka (MCP) Entegrasyonu</h2>
+    <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.6;">
+      Bingo, yerleşik bir Model Context Protocol sunucusudur. Claude Desktop, Cursor, Gemini, GPT veya yerel terminal ajanlarınız HTTP SSE ya da Stdio üzerinden bağlanarak otonom kod paylaşımı ve dosya alımı gerçekleştirebilir.
     </p>
 
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 20px;">
       <div>
-        <div class="form-label">MCP SSE Endpoint</div>
-        <div class="terminal-block">
-          <button class="btn btn-sm terminal-copy" onclick="copyText('{{ .MCPURL }}', 'URL copied')">copy</button>
+        <label class="field-label" style="margin-bottom: 6px; display: block;">MCP SSE Bağlantı Adresi</label>
+        <div class="terminal-card">
+          <button class="terminal-copy-btn" onclick="copyText('{{ .MCPURL }}', 'Adres kopyalandı!')">Kopyala</button>
           <code>{{ .MCPURL }}</code>
         </div>
       </div>
 
       <div>
-        <div class="form-label">User API Key</div>
-        <div class="terminal-block">
-          <button class="btn btn-sm terminal-copy" onclick="copyText('{{ .User.APIKey }}', 'Key copied')">copy</button>
+        <label class="field-label" style="margin-bottom: 6px; display: block;">Kullanıcı API Anahtarınız</label>
+        <div class="terminal-card">
+          <button class="terminal-copy-btn" onclick="copyText('{{ .User.APIKey }}', 'API anahtarı kopyalandı!')">Kopyala</button>
           <code>{{ .User.APIKey }}</code>
         </div>
       </div>
     </div>
-  </div>
 
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px;">
-    <div class="clean-card">
-      <div class="form-label">Cursor IDE Config (Settings &gt; Features &gt; MCP &gt; Type: SSE)</div>
-      <div class="terminal-block">
-        <button class="btn btn-sm terminal-copy" onclick="copyText(document.getElementById('cursor-code').textContent, 'Copied')">copy</button>
-        <pre id="cursor-code">{{ .CursorConfig }}</pre>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px;">
+      <div>
+        <label class="field-label" style="margin-bottom: 6px; display: block;">Cursor IDE Yapılandırması (Settings &gt; Features &gt; MCP &gt; Type: SSE)</label>
+        <div class="terminal-card">
+          <button class="terminal-copy-btn" onclick="copyText(document.getElementById('cursor-code').textContent, 'Yapılandırma kopyalandı!')">Kopyala</button>
+          <pre id="cursor-code">{{ .CursorConfig }}</pre>
+        </div>
+      </div>
+
+      <div>
+        <label class="field-label" style="margin-bottom: 6px; display: block;">Claude Desktop Yapılandırması (claude_desktop_config.json)</label>
+        <div class="terminal-card">
+          <button class="terminal-copy-btn" onclick="copyText(document.getElementById('claude-code').textContent, 'Yapılandırma kopyalandı!')">Kopyala</button>
+          <pre id="claude-code">{{ .ClaudeConfig }}</pre>
+        </div>
       </div>
     </div>
 
-    <div class="clean-card">
-      <div class="form-label">Claude Desktop Config (claude_desktop_config.json)</div>
-      <div class="terminal-block">
-        <button class="btn btn-sm terminal-copy" onclick="copyText(document.getElementById('claude-code').textContent, 'Copied')">copy</button>
-        <pre id="claude-code">{{ .ClaudeConfig }}</pre>
+    <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border-card);">
+      <h3 style="font-size: 14px; font-weight: 700; color: var(--text-main); margin-bottom: 10px;">Kullanılabilir MCP Araçları (Tools)</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);">
+        <div style="background-color: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+          <strong style="color: var(--text-main);">bingo_share_paste</strong><br>Kod veya metin oluşturma, süre ve şifre belirleme
+        </div>
+        <div style="background-color: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+          <strong style="color: var(--text-main);">bingo_upload_file</strong><br>Base64 kodlanmış dosya veya görsel yükleme
+        </div>
+        <div style="background-color: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+          <strong style="color: var(--text-main);">bingo_get_paste</strong><br>Paylaşım içeriğini okuma ve analiz etme
+        </div>
+        <div style="background-color: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-card);">
+          <strong style="color: var(--text-main);">bingo_delete_paste</strong><br>Oluşturulmuş paylaşımı kalıcı olarak silme
+        </div>
       </div>
-    </div>
-  </div>
-
-  <div class="clean-card" style="margin-top: 16px;">
-    <div class="form-label">Available MCP Tools</div>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
-      <div><strong style="color: #fff;">bingo_share_paste</strong><br>create paste with ttl/burn</div>
-      <div><strong style="color: #fff;">bingo_upload_file</strong><br>upload base64 file</div>
-      <div><strong style="color: #fff;">bingo_get_paste</strong><br>read paste content</div>
-      <div><strong style="color: #fff;">bingo_delete_paste</strong><br>delete paste</div>
     </div>
   </div>
 </div>
 
 <!-- ==========================================
-     TAB 4: USERS (SUPER ADMIN)
+     BÖLÜM 3: KULLANICI YÖNETİMİ (YÖNETİCİ)
      ========================================== -->
 {{ if .IsAdmin }}
-<div id="users" class="tab-section">
-  <div class="clean-card" style="margin-bottom: 20px;">
-    <div class="form-label">Add User Account</div>
-    <form action="/dashboard/users/create" method="POST" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+<div id="section-users" class="section-panel">
+  <!-- Yeni Kullanıcı Ekle Kartı -->
+  <div class="clean-card">
+    <h2 style="font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 14px;">Yeni Kullanıcı Hesabı Ekle</h2>
+    <form action="/dashboard/users/create" method="POST" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
       <input type="hidden" name="csrf_token" value="{{ .CsrfToken }}">
-      
+
       <div style="flex: 1; min-width: 160px;">
-        <input type="text" name="username" class="form-input" placeholder="username" required>
+        <label class="field-label" style="margin-bottom: 4px; display: block;">Kullanıcı Adı</label>
+        <input type="text" name="username" class="hero-input" style="width: 100%;" placeholder="kullanici_adi" required>
       </div>
 
       <div style="flex: 1; min-width: 160px;">
-        <input type="password" name="password" class="form-input" placeholder="password" required>
+        <label class="field-label" style="margin-bottom: 4px; display: block;">Şifre</label>
+        <input type="password" name="password" class="hero-input" style="width: 100%;" placeholder="En az 6 karakter" required>
       </div>
 
-      <div style="width: 140px;">
-        <select name="role" class="form-input">
-          <option value="user">User</option>
-          <option value="super_admin">Super Admin</option>
+      <div style="width: 150px;">
+        <label class="field-label" style="margin-bottom: 4px; display: block;">Kullanıcı Rolü</label>
+        <select name="role" class="hero-select" style="width: 100%;">
+          <option value="user">Standart Kullanıcı</option>
+          <option value="super_admin">Süper Yönetici</option>
         </select>
       </div>
 
-      <button type="submit" class="btn btn-primary" style="height: 38px;">Create User</button>
+      <button type="submit" class="btn-hero-submit" style="padding: 10px 20px;">
+        Kullanıcı Oluştur
+      </button>
     </form>
   </div>
 
-  <div class="paste-list-container">
-    {{ range .Users }}
-    <div class="paste-row">
-      <div class="paste-main-info">
-        <span style="font-family: var(--font-mono); font-weight: 600;">@{{ .Username }}</span>
-        <span class="mono-tag">{{ .Role }}</span>
-        <span class="mono-tag">{{ if .IsActive }}active{{ else }}disabled{{ end }}</span>
-        <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">{{ .APIKey }}</span>
-      </div>
-
-      <div class="paste-row-actions">
-        <form action="/dashboard/users/toggle" method="POST" style="margin: 0;">
-          <input type="hidden" name="csrf_token" value="{{ $.CsrfToken }}">
-          <input type="hidden" name="user_id" value="{{ .ID }}">
-          <button type="submit" class="btn btn-sm">{{ if .IsActive }}disable{{ else }}enable{{ end }}</button>
-        </form>
-
-        <form action="/dashboard/users/delete" method="POST" style="margin: 0;" onsubmit="return confirm('Delete user?')">
-          <input type="hidden" name="csrf_token" value="{{ $.CsrfToken }}">
-          <input type="hidden" name="user_id" value="{{ .ID }}">
-          <button type="submit" class="btn btn-sm btn-danger">del</button>
-        </form>
-      </div>
+  <!-- Kullanıcılar Tablosu -->
+  <div class="data-table-card">
+    <div class="table-header-bar">
+      <h2 class="table-title">Kayıtlı Kullanıcılar ({{ len .Users }})</h2>
     </div>
-    {{ end }}
+
+    <div class="table-responsive">
+      <table class="custom-table">
+        <thead>
+          <tr>
+            <th>KULLANICI ADI</th>
+            <th>ROL</th>
+            <th>DURUM</th>
+            <th>API ANAHTARI</th>
+            <th style="text-align: right;">İŞLEMLER</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Users }}
+          <tr>
+            <td>
+              <strong style="color: var(--text-main);">@{{ .Username }}</strong>
+            </td>
+            <td>
+              <span class="badge">{{ if eq .Role "super_admin" }}Yönetici{{ else }}Kullanıcı{{ end }}</span>
+            </td>
+            <td>
+              <span class="badge {{ if .IsActive }}badge-locked{{ else }}badge-burn{{ end }}">
+                {{ if .IsActive }}Aktif{{ else }}Devre Dışı{{ end }}
+              </span>
+            </td>
+            <td>
+              <code style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary);">{{ .APIKey }}</code>
+            </td>
+            <td>
+              <div class="actions-cell">
+                <form action="/dashboard/users/toggle" method="POST" style="margin: 0;">
+                  <input type="hidden" name="csrf_token" value="{{ $.CsrfToken }}">
+                  <input type="hidden" name="user_id" value="{{ .ID }}">
+                  <button type="submit" class="btn-action">
+                    {{ if .IsActive }}Durdur{{ else }}Aktif Et{{ end }}
+                  </button>
+                </form>
+
+                <form action="/dashboard/users/delete" method="POST" style="margin: 0;" onsubmit="return confirm('Bu kullanıcıyı ve tüm verilerini silmek istediğinize emin misiniz?')">
+                  <input type="hidden" name="csrf_token" value="{{ $.CsrfToken }}">
+                  <input type="hidden" name="user_id" value="{{ .ID }}">
+                  <button type="submit" class="btn-action btn-action-danger">Sil</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {{ end }}

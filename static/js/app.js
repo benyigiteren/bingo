@@ -1,7 +1,129 @@
-// Bingo — Stark Monochrome Interaction Engine
+// ==========================================================================
+// Bingo — İstemci Etkileşim ve Arayüz Motoru (100% Türkçe)
+// ==========================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-  // 1. Toast Notification System
+  // 1. Tema Yönetimi (Açık / Koyu Tema - Varsayılan: Açık/Koyu Tercihi)
+  const savedTheme = localStorage.getItem('bingo-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  updateThemeIcon(savedTheme);
+
+  window.toggleTheme = function() {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('bingo-theme', next);
+    updateThemeIcon(next);
+  };
+
+  function updateThemeIcon(theme) {
+    const icon = document.getElementById('theme-icon');
+    if (!icon) return;
+    if (theme === 'dark') {
+      // Güneş ikonu
+      icon.innerHTML = `<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>`;
+    } else {
+      // Ay ikonu
+      icon.innerHTML = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>`;
+    }
+  }
+
+  // 2. Mobil Sidebar Aç/Kapa
+  window.toggleSidebar = function() {
+    const sidebar = document.getElementById('app-sidebar');
+    if (sidebar) sidebar.classList.toggle('open');
+  };
+
+  // 3. Hero Paylaşım Modu Değiştirici (Dosya Yükle / Kod Editörü)
+  window.switchHeroMode = function(mode) {
+    const uploadPane = document.getElementById('hero-upload-pane');
+    const editorPane = document.getElementById('hero-editor-pane');
+    const btnUpload = document.getElementById('tab-btn-upload');
+    const btnEditor = document.getElementById('tab-btn-editor');
+
+    if (mode === 'editor') {
+      if (uploadPane) uploadPane.style.display = 'none';
+      if (editorPane) editorPane.classList.add('active');
+      if (btnUpload) btnUpload.classList.remove('active');
+      if (btnEditor) btnEditor.classList.add('active');
+      const input = document.getElementById('editor_filename');
+      if (input) input.focus();
+    } else {
+      if (uploadPane) uploadPane.style.display = 'block';
+      if (editorPane) editorPane.classList.remove('active');
+      if (btnUpload) btnUpload.classList.add('active');
+      if (btnEditor) btnEditor.classList.remove('active');
+    }
+  };
+
+  // 4. Akordiyon (Gelişmiş Seçenekler)
+  window.toggleAdvancedOptions = function() {
+    const content = document.getElementById('accordion-content');
+    const btn = document.getElementById('accordion-toggle-btn');
+    if (content) content.classList.toggle('open');
+    if (btn) btn.classList.toggle('open');
+  };
+
+  // 5. Sidebar Sekme Değişimi
+  const sidebarItems = document.querySelectorAll('.sidebar-nav-item');
+  const sections = {
+    'share': document.getElementById('section-share'),
+    'files': document.getElementById('section-share'),
+    'mcp': document.getElementById('section-mcp'),
+    'users': document.getElementById('section-users')
+  };
+
+  window.activateTab = function(tabName) {
+    if (!tabName) tabName = 'share';
+    tabName = tabName.replace('#', '');
+
+    sidebarItems.forEach(item => {
+      if (item.dataset.tab === tabName || (tabName === 'files' && item.dataset.tab === 'files')) {
+        item.classList.add('active');
+      } else {
+        item.classList.remove('active');
+      }
+    });
+
+    // Panel görünürlüğü
+    Object.keys(sections).forEach(key => {
+      const panel = sections[key];
+      if (panel) {
+        if (key === tabName || (tabName === 'files' && key === 'share')) {
+          panel.classList.add('active');
+        } else if (key !== 'files') {
+          panel.classList.remove('active');
+        }
+      }
+    });
+
+    if (tabName === 'files') {
+      const tableElem = document.getElementById('files-table-container');
+      if (tableElem) {
+        tableElem.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
+  sidebarItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      const href = item.getAttribute('href');
+      if (href && href.startsWith('/dashboard#')) {
+        e.preventDefault();
+        const tab = href.split('#')[1];
+        history.pushState(null, '', '#' + tab);
+        activateTab(tab);
+        const sidebar = document.getElementById('app-sidebar');
+        if (sidebar) sidebar.classList.remove('open');
+      }
+    });
+  });
+
+  if (window.location.hash) {
+    activateTab(window.location.hash);
+  }
+
+  // 6. Türkçe Toast Bildirim Sistemi
   window.showToast = function(message, type = 'success') {
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -22,8 +144,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 2800);
   };
 
-  // 2. Clipboard Copy Utility
-  window.copyText = function(text, label = 'Copied to clipboard!') {
+  // 7. Panoya Kopyalama Aracı
+  window.copyText = function(text, label = 'Panoya kopyalandı!') {
     if (!navigator.clipboard) {
       const textarea = document.createElement('textarea');
       textarea.value = text;
@@ -33,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.execCommand('copy');
         showToast(label);
       } catch (err) {
-        showToast('Copy failed', 'error');
+        showToast('Kopyalama başarısız oldu', 'error');
       }
       document.body.removeChild(textarea);
       return;
@@ -41,74 +163,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navigator.clipboard.writeText(text)
       .then(() => showToast(label))
-      .catch(() => showToast('Copy failed', 'error'));
+      .catch(() => showToast('Kopyalama başarısız oldu', 'error'));
   };
 
-  // 3. Tab Navigation
-  const tabLinks = document.querySelectorAll('.tab-link');
-  const tabSections = document.querySelectorAll('.tab-section');
-
-  window.activateTab = function(targetId) {
-    if (!targetId) targetId = '#files';
-    tabLinks.forEach(link => {
-      if (link.getAttribute('href') === targetId) {
-        link.classList.add('active');
-      } else {
-        link.classList.remove('active');
-      }
-    });
-
-    tabSections.forEach(section => {
-      if ('#' + section.id === targetId) {
-        section.classList.add('active');
-      } else {
-        section.classList.remove('active');
-      }
-    });
-  };
-
-  tabLinks.forEach(link => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      const targetId = link.getAttribute('href');
-      history.pushState(null, '', targetId);
-      activateTab(targetId);
-    });
-  });
-
-  if (window.location.hash) {
-    activateTab(window.location.hash);
-  }
-
-  // 4. Instant Search & Category Filters
+  // 8. Tablo Arama & Kategori Filtreleme
   const searchInput = document.getElementById('file-search-input');
-  const categoryPills = document.querySelectorAll('.category-pill');
+  const filterPills = document.querySelectorAll('.filter-pill');
   let currentFilter = 'all';
 
   function applyFilters() {
     const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
-    const pasteRows = document.querySelectorAll('.paste-row');
+    const rows = document.querySelectorAll('.paste-row');
 
-    function matchesCategory(filename, category) {
-      if (category === 'all') return true;
+    function matchesCategory(filename, cat) {
+      if (cat === 'all') return true;
       const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
-      if (category === 'code') {
+      if (cat === 'code') {
         return ['.go', '.py', '.js', '.ts', '.jsx', '.tsx', '.rs', '.c', '.cpp', '.h', '.java', '.html', '.css', '.sh', '.sql', '.yaml', '.yml', '.json'].includes(ext);
       }
-      if (category === 'text') {
+      if (cat === 'text') {
         return ['.md', '.txt', '.log', '.env', '.ini', '.conf', '.csv'].includes(ext);
       }
-      if (category === 'images') {
+      if (cat === 'images') {
         return ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(ext);
       }
       return true;
     }
 
-    pasteRows.forEach(row => {
+    rows.forEach(row => {
       const filename = row.dataset.filename || '';
       const textMatch = !query || filename.toLowerCase().includes(query);
       const catMatch = matchesCategory(filename, currentFilter);
-      row.style.display = (textMatch && catMatch) ? 'flex' : 'none';
+      row.style.display = (textMatch && catMatch) ? '' : 'none';
     });
   }
 
@@ -116,16 +202,16 @@ document.addEventListener('DOMContentLoaded', () => {
     searchInput.addEventListener('input', applyFilters);
   }
 
-  categoryPills.forEach(btn => {
-    btn.addEventListener('click', () => {
-      categoryPills.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = btn.dataset.filter || 'all';
+  filterPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      filterPills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      currentFilter = pill.dataset.filter || 'all';
       applyFilters();
     });
   });
 
-  // 5. Drag & Drop File Upload
+  // 9. Sürükle & Bırak ile Dosya Yükleme
   const uploadZone = document.getElementById('upload-zone');
   const fileInput = document.getElementById('file-input');
 
@@ -164,7 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function uploadFiles(files) {
     if (files.length === 0) return;
 
-    showToast(`Uploading ${files.length} file(s)...`);
+    showToast(`${files.length} dosya yükleniyor...`);
     let completed = 0;
 
     files.forEach(file => {
@@ -185,20 +271,20 @@ document.addEventListener('DOMContentLoaded', () => {
         completed++;
         if (data.success) {
           if (completed === files.length) {
-            showToast('Upload complete!');
+            showToast('Yükleme başarıyla tamamlandı!');
             setTimeout(() => window.location.reload(), 600);
           }
         } else {
-          showToast(data.error || `${file.name} failed`, 'error');
+          showToast(data.error || `${file.name} yüklenemedi`, 'error');
         }
       })
-      .catch(err => {
-        showToast(`Error: ${file.name}`, 'error');
+      .catch(() => {
+        showToast(`Hata: ${file.name} yüklenemedi`, 'error');
       });
     });
   }
 
-  // 6. Global Clipboard Listener (Ctrl+V)
+  // 10. Global Pano Yapıştırma Dinleyicisi (Ctrl + V)
   document.addEventListener('paste', (e) => {
     const active = document.activeElement;
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
@@ -214,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (blob) {
           foundImage = true;
           const ext = blob.type.split('/')[1] || 'png';
-          const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: blob.type });
+          const file = new File([blob], `ekran_goruntusu_${Date.now()}.${ext}`, { type: blob.type });
           uploadFiles([file]);
           break;
         }
@@ -224,65 +310,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!foundImage) {
       const text = e.clipboardData.getData('text');
       if (text && text.trim().length > 0) {
-        activateTab('#editor');
+        switchHeroMode('editor');
         const editorTextarea = document.getElementById('editor_content');
         if (editorTextarea) {
           editorTextarea.value = text;
           editorTextarea.focus();
-          showToast('Pasted into editor');
-          updateMarkdownPreview(text);
+          showToast('Metin editöre aktarıldı');
         }
       }
     }
   });
 
-  // 7. Split Editor Live Markdown Preview & Tab Key Support
-  const editorContent = document.getElementById('editor_content');
-  const editorPreview = document.getElementById('editor_preview');
-  const editorLangSelect = document.getElementById('editor_language');
-  const editorFilename = document.getElementById('editor_filename');
-
-  function updateMarkdownPreview(text) {
-    if (!editorPreview) return;
-    if (window.renderSimpleMarkdown) {
-      editorPreview.innerHTML = window.renderSimpleMarkdown(text);
-    } else {
-      editorPreview.textContent = text;
-    }
-  }
-
-  if (editorContent) {
-    editorContent.addEventListener('input', (e) => {
-      updateMarkdownPreview(e.target.value);
-    });
-
-    editorContent.addEventListener('keydown', (e) => {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const start = editorContent.selectionStart;
-        const end = editorContent.selectionEnd;
-        editorContent.value = editorContent.value.substring(0, start) + '  ' + editorContent.value.substring(end);
-        editorContent.selectionStart = editorContent.selectionEnd = start + 2;
-      }
-    });
-  }
-
-  if (editorLangSelect && editorFilename) {
-    editorLangSelect.addEventListener('change', () => {
-      const ext = editorLangSelect.value;
-      if (ext) {
-        let current = editorFilename.value.trim();
-        const dotIdx = current.lastIndexOf('.');
-        if (dotIdx !== -1) {
-          current = current.substring(0, dotIdx);
-        }
-        if (!current) current = 'paste_' + Date.now();
-        editorFilename.value = current + ext;
-      }
-    });
-  }
-
-  // 8. QR Code Modal (Monochrome Minimalist)
+  // 11. QR Kod Paylaşım Modalı (Türkçe)
   window.openQRModal = function(url, filename) {
     let modal = document.getElementById('qr-modal');
     if (!modal) {
@@ -290,19 +329,19 @@ document.addEventListener('DOMContentLoaded', () => {
       modal.id = 'qr-modal';
       modal.className = 'modal-backdrop';
       modal.innerHTML = `
-        <div class="modal-window">
-          <div class="modal-title-bar">
-            <span>share via qr</span>
-            <button onclick="closeQRModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-family:var(--font-mono); font-size:14px;">[x]</button>
+        <div class="modal-box">
+          <div class="modal-header">
+            <span>QR Kod ile Paylaş</span>
+            <button onclick="closeQRModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px;">&times;</button>
           </div>
           <div style="text-align: center;">
-            <div style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); margin-bottom: 12px;" id="qr-modal-filename"></div>
-            <div id="qr-code-target" style="display: inline-block; background: #fff; padding: 12px; border-radius: var(--radius);"></div>
-            <div style="margin-top: 12px; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); word-break: break-all;" id="qr-modal-url"></div>
+            <div style="font-family: var(--font-mono); font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;" id="qr-modal-filename"></div>
+            <div id="qr-code-target" style="display: inline-block; background: #ffffff; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-card);"></div>
+            <div style="margin-top: 14px; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); word-break: break-all;" id="qr-modal-url"></div>
           </div>
-          <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
-            <button class="btn btn-sm btn-primary" onclick="copyText(window.currentQRUrl, 'Link copied!')">copy link</button>
-            <button class="btn btn-sm" onclick="closeQRModal()">close</button>
+          <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; border-top: 1px solid var(--border-card); padding-top: 14px;">
+            <button class="btn-action" onclick="copyText(window.currentQRUrl, 'Bağlantı kopyalandı!')">Bağlantıyı Kopyala</button>
+            <button class="btn-action" onclick="closeQRModal()">Kapat</button>
           </div>
         </div>
       `;
@@ -315,10 +354,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const target = document.getElementById('qr-code-target');
     const qrImg = document.createElement('img');
-    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}`;
-    qrImg.width = 160;
-    qrImg.height = 160;
-    qrImg.alt = 'QR Code';
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}`;
+    qrImg.width = 180;
+    qrImg.height = 180;
+    qrImg.alt = 'QR Kodu';
     target.innerHTML = '';
     target.appendChild(qrImg);
 
@@ -328,27 +367,5 @@ document.addEventListener('DOMContentLoaded', () => {
   window.closeQRModal = function() {
     const modal = document.getElementById('qr-modal');
     if (modal) modal.classList.remove('active');
-  };
-
-  // 9. Safe Markdown Parser
-  window.renderSimpleMarkdown = function(md) {
-    if (!md) return '';
-    let html = md
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
-    html = html.replace(/```(?:[a-zA-Z0-9_\-\.\+]+)?\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    html = html.replace(/^&gt;[ \t]?(.*$)/gim, '<blockquote>$1</blockquote>');
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    html = html.replace(/^[ \t]*[\-\*][ \t](.*$)/gim, '<li>$1</li>');
-
-    return `<div class="prose">${html}</div>`;
   };
 });

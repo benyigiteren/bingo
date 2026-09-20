@@ -4,49 +4,97 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ if .Title }}{{ .Title }} — bingo{{ else }}bingo{{ end }}</title>
+  <title>{{ if .Title }}{{ .Title }} — Bingo{{ else }}Bingo — Dosya &amp; Kod Paylaşımı{{ end }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=5">
-  <script src="/static/js/app.js?v=5"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=6">
+  <script src="/static/js/app.js?v=6"></script>
 </head>
 <body>
-  <div class="site-wrapper">
-    <header class="site-header">
-      <div class="header-left">
-        <a href="/" class="brand-text">bingo</a>
-        <span class="brand-tag">vault</span>
+  <div class="app-container">
+    {{ if .User }}
+    <!-- Sol Kenar Çubuğu (Sidebar) -->
+    <aside class="app-sidebar" id="app-sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-text">Bingo</span>
+        <span class="brand-badge">kasa</span>
       </div>
-      
-      <nav class="site-nav">
-        {{ if .User }}
-          <a href="/dashboard#files" class="nav-item">pastes</a>
-          <a href="/dashboard#editor" class="nav-item">new</a>
-          <a href="/dashboard#mcp" class="nav-item">mcp</a>
-          <a href="/api" class="nav-item">api</a>
-          {{ if .IsAdmin }}
-            <a href="/dashboard#users" class="nav-item">users</a>
-          {{ end }}
-          <span class="user-badge">@{{ .User.Username }}</span>
-          <a href="/logout" class="nav-item nav-logout">logout</a>
-        {{ else }}
-          <a href="/api" class="nav-item">api &amp; mcp</a>
-          <a href="/login" class="btn btn-sm btn-primary">login</a>
+
+      <nav class="sidebar-nav">
+        <a href="/dashboard#share" class="sidebar-nav-item active" data-tab="share">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <span>Paylaşım Yap</span>
+        </a>
+
+        <a href="/dashboard#files" class="sidebar-nav-item" data-tab="files">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          <span>Paylaşımlarınız</span>
+        </a>
+
+        <a href="/dashboard#mcp" class="sidebar-nav-item" data-tab="mcp">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          <span>API &amp; MCP Entegrasyonu</span>
+        </a>
+
+        {{ if .IsAdmin }}
+        <a href="/dashboard#users" class="sidebar-nav-item" data-tab="users">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <span>Kullanıcı Yönetimi</span>
+        </a>
         {{ end }}
       </nav>
-    </header>
 
-    <main class="site-main">
-      {{ template "content" . }}
-    </main>
+      <!-- Kullanıcı Profil Kartı -->
+      <div class="sidebar-profile">
+        <div class="profile-info">
+          <div class="profile-avatar">{{ printf "%.1s" .User.Username }}</div>
+          <div class="profile-details">
+            <span class="profile-name">{{ .User.Username }}</span>
+            <span class="profile-role">
+              {{ if eq .User.Role "super_admin" }}
+                <span class="profile-role-badge">Yönetici</span>
+              {{ else }}
+                <span class="profile-role-badge">Kullanıcı</span>
+              {{ end }}
+            </span>
+          </div>
+        </div>
+        <a href="/logout" class="profile-logout" title="Çıkış Yap">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        </a>
+      </div>
+    </aside>
+    {{ end }}
 
-    <footer class="site-footer">
-      <div class="footer-left">bingo &middot; minimal self-hosted vault &amp; mcp</div>
-      <div class="footer-right">cgo-free &middot; &lt;15mb ram</div>
-    </footer>
+    <!-- Ana İçerik Bölgesi -->
+    <div class="app-main">
+      <header class="main-topbar">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          {{ if .User }}
+          <button class="mobile-menu-btn" onclick="toggleSidebar()" aria-label="Menü">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+          {{ end }}
+          <h1 class="topbar-title">{{ if .Title }}{{ .Title }}{{ else }}Dosya &amp; Kod Paylaşımı{{ end }}</h1>
+        </div>
+
+        <div class="topbar-actions">
+          <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="Açık/Koyu Tema">
+            <svg id="theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+          {{ if not .User }}
+            <a href="/login" class="btn-action" style="padding: 7px 14px; font-weight: 600;">Giriş Yap</a>
+          {{ end }}
+        </div>
+      </header>
+
+      <main class="main-content-scroll">
+        {{ template "content" . }}
+      </main>
+    </div>
   </div>
-  
+
   <div id="toast-container"></div>
 </body>
 </html>

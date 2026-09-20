@@ -1,71 +1,80 @@
 {{ define "content" }}
 {{ if .IsLocked }}
-<!-- Password Protected Screen -->
-<div style="max-width: 360px; margin: 60px auto;">
-  <div class="clean-card" style="text-align: center; padding: 32px 24px;">
-    <div style="font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">protected paste</div>
-    <h2 style="font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 8px;">Password Required</h2>
-    <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 20px;">This paste is encrypted. Enter the password to unlock.</p>
+<!-- Şifre Korumalı Paylaşım Ekranı -->
+<div style="max-width: 380px; margin: 60px auto;">
+  <div class="clean-card" style="text-align: center; padding: 36px 24px;">
+    <div style="font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Korumalı Paylaşım</div>
+    <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main); margin-bottom: 8px;">Şifre Gerekli</h2>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 22px;">Bu içerik şifrelenmiştir. Görüntülemek için şifreyi giriniz.</p>
 
     {{ if .WrongPass }}
-      <div style="background-color: #1a0808; border: 1px solid #441111; color: #ff6666; font-family: var(--font-mono); font-size: 11.5px; padding: 8px; border-radius: var(--radius); margin-bottom: 14px;">
-        invalid password.
+      <div style="background-color: var(--btn-danger-bg); border: 1px solid var(--btn-danger-border); color: var(--btn-danger-text); font-size: 12px; padding: 10px; border-radius: var(--radius-md); margin-bottom: 16px;">
+        Hatalı şifre girdiniz. Lütfen tekrar deneyin.
       </div>
     {{ end }}
 
     <form method="POST" action="">
-      <div class="form-group" style="text-align: left;">
-        <input type="password" name="password" class="form-input" placeholder="enter password" required autofocus>
+      <div class="field-group" style="text-align: left; margin-bottom: 16px;">
+        <input type="password" name="password" class="hero-input" style="width: 100%;" placeholder="Şifrenizi yazın" required autofocus>
       </div>
-      <button type="submit" class="btn btn-primary" style="width: 100%; height: 38px;">unlock</button>
+      <button type="submit" class="btn-hero-submit" style="width: 100%; justify-content: center; height: 40px;">
+        Kilidi Aç
+      </button>
     </form>
   </div>
 </div>
 
 {{ else }}
 
-<!-- Paste Document Viewer -->
+<!-- Paylaşım Görüntüleyici -->
 <div style="max-width: 980px; margin: 0 auto;">
   {{ if .IsBurn }}
-    <div style="background-color: #120808; border: 1px solid #331111; border-radius: var(--radius); padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; color: #ff8888; margin-bottom: 16px;">
-      [burn after reading active]: this paste will self-destruct once closed.
+    <div style="background-color: var(--btn-danger-bg); border: 1px solid var(--btn-danger-border); border-radius: var(--radius-md); padding: 12px 16px; font-size: 13px; color: var(--btn-danger-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.77.04"></path></svg>
+      <strong>[Tek Seferlik Okuma Aktif]:</strong> Bu paylaşım görüntülendikten sonra otomatik olarak imha edilecektir.
     </div>
   {{ end }}
 
-  <div class="clean-card" style="padding: 16px 20px; margin-bottom: 16px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+  <div class="clean-card" style="padding: 18px 24px; margin-bottom: 16px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
       <div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <h1 style="font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: #fff;">{{ .OriginalName }}</h1>
-          {{ if .IsBurn }}<span class="mono-tag" style="border-color: #662222; color: #ff8888;">burn</span>{{ end }}
-          {{ if .HasPassword }}<span class="mono-tag">locked</span>{{ end }}
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h1 style="font-family: var(--font-mono); font-size: 17px; font-weight: 700; color: var(--text-main);">{{ .OriginalName }}</h1>
+          {{ if .IsBurn }}<span class="badge badge-burn">tek seferlik</span>{{ end }}
+          {{ if .HasPassword }}<span class="badge badge-locked">şifreli</span>{{ end }}
         </div>
-        <div style="display: flex; gap: 10px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); margin-top: 4px;">
-          <span>@{{ .Username }}</span>
+        <div style="display: flex; gap: 10px; font-size: 12px; color: var(--text-muted); margin-top: 5px; flex-wrap: wrap;">
+          <span>Paylaşan: <strong>@{{ .Username }}</strong></span>
           <span>&middot;</span>
-          <span>{{ .FileSize }}</span>
+          <span>Boyut: {{ .FileSize }}</span>
           <span>&middot;</span>
-          <span>{{ .Views }} views</span>
+          <span>{{ .Views }} görüntülenme</span>
           <span>&middot;</span>
-          <span>{{ .CreatedAt }}</span>
+          <span>Tarih: {{ .CreatedAt }}</span>
         </div>
       </div>
 
-      <div style="display: flex; gap: 6px;">
-        <button class="btn btn-sm" onclick="copyText(document.getElementById('raw-text-content').textContent, 'Copied to clipboard!')">copy</button>
-        <button class="btn btn-sm" onclick="openQRModal(window.location.href, '{{ .OriginalName }}')">qr</button>
-        <a href="/{{ .Username }}/{{ .Filename }}?raw=true" class="btn btn-sm" target="_blank">raw</a>
+      <div style="display: flex; gap: 8px;">
+        <button type="button" class="btn-action" onclick="copyText(document.getElementById('raw-text-content').textContent, 'İçerik panoya kopyalandı!')">
+          Kopyala
+        </button>
+        <button type="button" class="btn-action" onclick="openQRModal(window.location.href, '{{ .OriginalName }}')">
+          QR Kod
+        </button>
+        <a href="/{{ .Username }}/{{ .Filename }}?raw=true" class="btn-action" target="_blank">
+          Ham Metin (Raw)
+        </a>
       </div>
     </div>
   </div>
 
-  <div style="border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background-color: var(--bg);">
+  <div style="border: 1px solid var(--border-card); border-radius: var(--radius-lg); overflow: hidden; background-color: var(--code-bg); box-shadow: var(--shadow-sm);">
     {{ if .IsMarkdown }}
-      <div style="padding: 24px;" id="markdown-viewer" class="prose"></div>
+      <div style="padding: 24px; background-color: var(--bg-card);" id="markdown-viewer" class="prose"></div>
     {{ else }}
-      <div class="code-viewer-wrap">
-        <div class="code-lines" id="line-numbers-col">1</div>
-        <div class="code-body"><code id="code-content-target">{{ .Content }}</code></div>
+      <div style="display: flex; overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.6;">
+        <div style="padding: 16px 14px; color: var(--text-faint); text-align: right; user-select: none; border-right: 1px solid var(--border-card); background-color: rgba(0,0,0,0.15);" id="line-numbers-col">1</div>
+        <div style="padding: 16px 20px; flex: 1; overflow-x: auto; color: var(--code-text); white-space: pre;"><code id="code-content-target">{{ .Content }}</code></div>
       </div>
     {{ end }}
   </div>

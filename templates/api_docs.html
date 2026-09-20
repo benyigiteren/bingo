@@ -1,42 +1,42 @@
 {{ define "content" }}
-<div style="margin-bottom: 24px;">
-  <h1 style="font-family: var(--font-mono); font-size: 18px; font-weight: 600; color: #fff;">api &amp; mcp specs</h1>
-  <p style="font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); margin-top: 2px;">rest and model context protocol reference</p>
+<div style="margin-bottom: 28px;">
+  <h1 style="font-size: 24px; font-weight: 800; color: var(--text-main); letter-spacing: -0.02em;">API &amp; MCP Referansı</h1>
+  <p style="font-size: 13.5px; color: var(--text-secondary); margin-top: 4px;">REST API ve Model Context Protocol (MCP) entegrasyon kılavuzu</p>
 </div>
 
-<div class="clean-card" style="margin-bottom: 16px;">
-  <div class="form-label">Model Context Protocol (MCP)</div>
-  <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
-    Native JSON-RPC 2.0 endpoint for Claude Desktop, Cursor, Gemini, and local terminal agents.
+<div class="clean-card" style="margin-bottom: 18px;">
+  <h2 style="font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 6px;">Model Context Protocol (MCP)</h2>
+  <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.6;">
+    Claude Desktop, Cursor, Gemini ve yerel terminal ajanları için yerel JSON-RPC 2.0 uç noktası:
   </p>
-  <div class="terminal-block">
-    <button class="btn btn-sm terminal-copy" onclick="copyText('{{ .BaseURL }}/mcp?api_key=your_key', 'Copied')">copy</button>
-    <code>{{ .BaseURL }}/mcp?api_key=your_api_key</code>
+  <div class="terminal-card">
+    <button class="terminal-copy-btn" onclick="copyText('{{ .BaseURL }}/mcp?api_key=api_anahtariniz', 'Adres kopyalandı!')">Kopyala</button>
+    <code>{{ .BaseURL }}/mcp?api_key=api_anahtariniz</code>
   </div>
 </div>
 
-<div class="clean-card" style="margin-bottom: 16px;">
-  <div class="form-label">Authentication</div>
-  <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
-    Provide your API key via HTTP headers or URL query parameter:
+<div class="clean-card" style="margin-bottom: 18px;">
+  <h2 style="font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 6px;">Kimlik Doğrulama (Authentication)</h2>
+  <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.6;">
+    API anahtarınızı aşağıdaki yöntemlerden biriyle sağlayabilirsiniz:
   </p>
-  <div style="display: flex; gap: 8px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11.5px;">
-    <span class="mono-tag">Header: X-API-Key: bg_...</span>
-    <span class="mono-tag">Header: Authorization: Bearer bg_...</span>
-    <span class="mono-tag">Query: ?api_key=bg_...</span>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <span class="badge">Header: X-API-Key: bg_...</span>
+    <span class="badge">Header: Authorization: Bearer bg_...</span>
+    <span class="badge">Sorgu: ?api_key=bg_...</span>
   </div>
 </div>
 
 <div class="clean-card">
-  <div class="form-label">POST /api/upload</div>
-  <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
-    Uploads raw text, code, or binary files with optional ttl, is_burn, and password parameters.
+  <h2 style="font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 6px;">POST /api/upload</h2>
+  <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.6;">
+    Metin, kod veya dosya yüklemek için JSON formatında POST isteği gönderin (ttl, is_burn ve password parametreleri isteğe bağlıdır):
   </p>
 
-  <div class="terminal-block" style="margin-bottom: 12px;">
+  <div class="terminal-card">
     <pre>curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your_api_key" \
+  -H "X-API-Key: api_anahtariniz" \
   -d '{"text": "console.log(1)", "filename": "app.js", "ttl": "1d"}' \
   {{ .BaseURL }}/api/upload</pre>
   </div>
