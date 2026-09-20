@@ -1,5 +1,4 @@
-// Bingo - Modern Soft-Dark Interaction Engine
-// Includes: Clipboard Paste (Ctrl+V), Instant Search & Filter, Grid/List Mode, SVG QR Generator, Split Editor
+// Bingo — Stark Monochrome Interaction Engine
 
 document.addEventListener('DOMContentLoaded', () => {
   // 1. Toast Notification System
@@ -12,25 +11,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const toast = document.createElement('div');
-    toast.className = `toast ${type === 'error' ? 'alert-danger' : 'alert-success'}`;
-
-    const icon = type === 'error'
-      ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`
-      : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
-
-    toast.innerHTML = `${icon} <span>${message}</span>`;
+    toast.className = `toast ${type === 'error' ? 'alert-danger' : ''}`;
+    toast.textContent = message;
     container.appendChild(toast);
 
     setTimeout(() => {
       toast.style.opacity = '0';
-      toast.style.transform = 'translateY(10px)';
-      toast.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
-      setTimeout(() => toast.remove(), 250);
-    }, 3200);
+      toast.style.transition = 'opacity 0.2s ease';
+      setTimeout(() => toast.remove(), 200);
+    }, 2800);
   };
 
   // 2. Clipboard Copy Utility
-  window.copyText = function(text, label = 'Panoya kopyalandı!') {
+  window.copyText = function(text, label = 'Copied to clipboard!') {
     if (!navigator.clipboard) {
       const textarea = document.createElement('textarea');
       textarea.value = text;
@@ -40,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.execCommand('copy');
         showToast(label);
       } catch (err) {
-        showToast('Kopyalama başarısız oldu', 'error');
+        showToast('Copy failed', 'error');
       }
       document.body.removeChild(textarea);
       return;
@@ -48,14 +41,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navigator.clipboard.writeText(text)
       .then(() => showToast(label))
-      .catch(() => showToast('Kopyalama başarısız oldu', 'error'));
+      .catch(() => showToast('Copy failed', 'error'));
   };
 
   // 3. Tab Navigation
   const tabLinks = document.querySelectorAll('.tab-link');
   const tabSections = document.querySelectorAll('.tab-section');
 
-  function activateTab(targetId) {
+  window.activateTab = function(targetId) {
     if (!targetId) targetId = '#files';
     tabLinks.forEach(link => {
       if (link.getAttribute('href') === targetId) {
@@ -72,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
         section.classList.remove('active');
       }
     });
-  }
+  };
 
   tabLinks.forEach(link => {
     link.addEventListener('click', (e) => {
@@ -87,50 +80,14 @@ document.addEventListener('DOMContentLoaded', () => {
     activateTab(window.location.hash);
   }
 
-  // 4. View Mode Toggle (Table List vs Bento Grid)
-  const viewBtns = document.querySelectorAll('.view-btn');
-  const tableView = document.getElementById('table-view');
-  const gridView = document.getElementById('grid-view');
-
-  function setViewMode(mode) {
-    viewBtns.forEach(btn => {
-      if (btn.dataset.view === mode) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
-
-    if (tableView && gridView) {
-      if (mode === 'grid') {
-        tableView.style.display = 'none';
-        gridView.style.display = 'grid';
-      } else {
-        tableView.style.display = 'block';
-        gridView.style.display = 'none';
-      }
-    }
-    localStorage.setItem('bingo_view_mode', mode);
-  }
-
-  viewBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      setViewMode(btn.dataset.view);
-    });
-  });
-
-  const savedViewMode = localStorage.getItem('bingo_view_mode') || 'list';
-  setViewMode(savedViewMode);
-
-  // 5. Instant Search & Category Filters
+  // 4. Instant Search & Category Filters
   const searchInput = document.getElementById('file-search-input');
-  const filterBtns = document.querySelectorAll('.filter-btn');
+  const categoryPills = document.querySelectorAll('.category-pill');
   let currentFilter = 'all';
 
   function applyFilters() {
     const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
-    const tableRows = document.querySelectorAll('#table-view tbody tr');
-    const gridCards = document.querySelectorAll('.file-card');
+    const pasteRows = document.querySelectorAll('.paste-row');
 
     function matchesCategory(filename, category) {
       if (category === 'all') return true;
@@ -147,20 +104,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return true;
     }
 
-    // Filter Table Rows
-    tableRows.forEach(row => {
+    pasteRows.forEach(row => {
       const filename = row.dataset.filename || '';
       const textMatch = !query || filename.toLowerCase().includes(query);
       const catMatch = matchesCategory(filename, currentFilter);
-      row.style.display = (textMatch && catMatch) ? '' : 'none';
-    });
-
-    // Filter Grid Cards
-    gridCards.forEach(card => {
-      const filename = card.dataset.filename || '';
-      const textMatch = !query || filename.toLowerCase().includes(query);
-      const catMatch = matchesCategory(filename, currentFilter);
-      card.style.display = (textMatch && catMatch) ? 'flex' : 'none';
+      row.style.display = (textMatch && catMatch) ? 'flex' : 'none';
     });
   }
 
@@ -168,16 +116,16 @@ document.addEventListener('DOMContentLoaded', () => {
     searchInput.addEventListener('input', applyFilters);
   }
 
-  filterBtns.forEach(btn => {
+  categoryPills.forEach(btn => {
     btn.addEventListener('click', () => {
-      filterBtns.forEach(b => b.classList.remove('active'));
+      categoryPills.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentFilter = btn.dataset.filter || 'all';
       applyFilters();
     });
   });
 
-  // 6. Drag & Drop File Upload
+  // 5. Drag & Drop File Upload
   const uploadZone = document.getElementById('upload-zone');
   const fileInput = document.getElementById('file-input');
 
@@ -216,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function uploadFiles(files) {
     if (files.length === 0) return;
 
-    showToast(`${files.length} dosya yükleniyor...`);
+    showToast(`Uploading ${files.length} file(s)...`);
     let completed = 0;
 
     files.forEach(file => {
@@ -237,35 +185,34 @@ document.addEventListener('DOMContentLoaded', () => {
         completed++;
         if (data.success) {
           if (completed === files.length) {
-            showToast('Tüm dosyalar başarıyla yüklendi!');
-            setTimeout(() => window.location.reload(), 1000);
+            showToast('Upload complete!');
+            setTimeout(() => window.location.reload(), 600);
           }
         } else {
-          showToast(data.error || `${file.name} yüklenemedi`, 'error');
+          showToast(data.error || `${file.name} failed`, 'error');
         }
       })
       .catch(err => {
-        showToast(`Hata: ${file.name} yüklenemedi`, 'error');
+        showToast(`Error: ${file.name}`, 'error');
       });
     });
   }
 
-  // 7. Clipboard Listener (Global Ctrl+V paste catcher)
+  // 6. Global Clipboard Listener (Ctrl+V)
   document.addEventListener('paste', (e) => {
-    // Ignore if target is already inside an input or textarea
     const active = document.activeElement;
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
       return;
     }
 
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-    let found = false;
+    let foundImage = false;
 
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf('image') !== -1) {
         const blob = items[i].getAsFile();
         if (blob) {
-          found = true;
+          foundImage = true;
           const ext = blob.type.split('/')[1] || 'png';
           const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: blob.type });
           uploadFiles([file]);
@@ -274,23 +221,22 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    if (!found) {
+    if (!foundImage) {
       const text = e.clipboardData.getData('text');
       if (text && text.trim().length > 0) {
-        // Open Editor tab with pasted content prefilled!
         activateTab('#editor');
         const editorTextarea = document.getElementById('editor_content');
         if (editorTextarea) {
           editorTextarea.value = text;
           editorTextarea.focus();
-          showToast('Panodaki metin editöre aktarıldı!');
+          showToast('Pasted into editor');
           updateMarkdownPreview(text);
         }
       }
     }
   });
 
-  // 8. Split Editor Live Markdown Preview & Tab Key Support
+  // 7. Split Editor Live Markdown Preview & Tab Key Support
   const editorContent = document.getElementById('editor_content');
   const editorPreview = document.getElementById('editor_preview');
   const editorLangSelect = document.getElementById('editor_language');
@@ -310,7 +256,6 @@ document.addEventListener('DOMContentLoaded', () => {
       updateMarkdownPreview(e.target.value);
     });
 
-    // Support Tab key indentation
     editorContent.addEventListener('keydown', (e) => {
       if (e.key === 'Tab') {
         e.preventDefault();
@@ -337,7 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 9. QR Code Modal (Pure SVG offline generator)
+  // 8. QR Code Modal (Monochrome Minimalist)
   window.openQRModal = function(url, filename) {
     let modal = document.getElementById('qr-modal');
     if (!modal) {
@@ -345,19 +290,19 @@ document.addEventListener('DOMContentLoaded', () => {
       modal.id = 'qr-modal';
       modal.className = 'modal-backdrop';
       modal.innerHTML = `
-        <div class="modal">
-          <div class="modal-header">
-            <h3 class="modal-title">QR Kod ile Paylaş</h3>
-            <button class="modal-close" onclick="closeQRModal()">&times;</button>
+        <div class="modal-window">
+          <div class="modal-title-bar">
+            <span>share via qr</span>
+            <button onclick="closeQRModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-family:var(--font-mono); font-size:14px;">[x]</button>
           </div>
-          <div class="modal-body" style="text-align: center;">
-            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;" id="qr-modal-filename"></p>
-            <div id="qr-code-target" style="display: inline-block; background: #fff; padding: 14px; border-radius: 8px;"></div>
-            <div style="margin-top: 14px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); word-break: break-all;" id="qr-modal-url"></div>
+          <div style="text-align: center;">
+            <div style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); margin-bottom: 12px;" id="qr-modal-filename"></div>
+            <div id="qr-code-target" style="display: inline-block; background: #fff; padding: 12px; border-radius: var(--radius);"></div>
+            <div style="margin-top: 12px; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); word-break: break-all;" id="qr-modal-url"></div>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-sm btn-primary" onclick="copyText(window.currentQRUrl, 'Paylaşım linki kopyalandı!')">Linki Kopyala</button>
-            <button class="btn btn-sm" onclick="closeQRModal()">Kapat</button>
+          <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <button class="btn btn-sm btn-primary" onclick="copyText(window.currentQRUrl, 'Link copied!')">copy link</button>
+            <button class="btn btn-sm" onclick="closeQRModal()">close</button>
           </div>
         </div>
       `;
@@ -368,12 +313,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('qr-modal-filename').textContent = filename;
     document.getElementById('qr-modal-url').textContent = url;
 
-    // Generate QR using an inline SVG render
     const target = document.getElementById('qr-code-target');
     const qrImg = document.createElement('img');
-    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}`;
-    qrImg.width = 180;
-    qrImg.height = 180;
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}`;
+    qrImg.width = 160;
+    qrImg.height = 160;
     qrImg.alt = 'QR Code';
     target.innerHTML = '';
     target.appendChild(qrImg);
@@ -386,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (modal) modal.classList.remove('active');
   };
 
-  // 10. Simple Safe Markdown Parser for Live Preview & Viewer
+  // 9. Safe Markdown Parser
   window.renderSimpleMarkdown = function(md) {
     if (!md) return '';
     let html = md
@@ -394,22 +338,15 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
 
-    // Code blocks
     html = html.replace(/```(?:[a-zA-Z0-9_\-\.\+]+)?\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-    // Inline code
     html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    // Headers
     html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
     html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
     html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-    // Bold & Italic
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    // Blockquotes
     html = html.replace(/^&gt;[ \t]?(.*$)/gim, '<blockquote>$1</blockquote>');
-    // Links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    // Lists
     html = html.replace(/^[ \t]*[\-\*][ \t](.*$)/gim, '<li>$1</li>');
 
     return `<div class="prose">${html}</div>`;

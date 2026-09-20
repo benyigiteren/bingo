@@ -6,8 +6,6 @@ services:
       dockerfile: Dockerfile
     container_name: bingo_app
     ports:
-      # Host port conflicts can be overridden via BINGO_HOST_PORT env variable.
-      # Default host port changed to 8085 to prevent collisions with 8080.
       - "${BINGO_HOST_PORT:-8085}:8080"
     expose:
       - "8080"
@@ -15,7 +13,10 @@ services:
       - PORT=8080
       - DB_PATH=/app/data/bingo.db
     volumes:
-      # Persistent storage volumes for database and uploaded shares
-      - ./data:/app/data
-      - ./uploads:/app/uploads
+      - bingo_data:/app/data
+      - bingo_uploads:/app/uploads
     restart: unless-stopped
+
+volumes:
+  bingo_data:
+  bingo_uploads:

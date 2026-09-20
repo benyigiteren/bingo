@@ -4,46 +4,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ if .Title }}{{ .Title }}{{ else }}Bingo — Minimalist Pastebin & MCP Vault{{ end }}</title>
+  <title>{{ if .Title }}{{ .Title }} — bingo{{ else }}bingo{{ end }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="/static/js/app.js"></script>
 </head>
 <body>
-  <div class="app-container">
-    <header>
-      <a href="/" class="logo">
-        <div class="logo-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="16 18 22 12 16 6"></polyline>
-            <polyline points="8 6 2 12 8 18"></polyline>
-          </svg>
-        </div>
-        <span>Bingo</span>
-      </a>
-      <nav>
+  <div class="site-wrapper">
+    <header class="site-header">
+      <div class="header-left">
+        <a href="/" class="brand-text">bingo</a>
+        <span class="brand-tag">vault</span>
+      </div>
+      
+      <nav class="site-nav">
         {{ if .User }}
-          <a href="/dashboard" class="nav-link">Çalışma Alanı</a>
-          <a href="/dashboard#mcp" class="nav-link" style="color: var(--accent-primary);"><span class="badge badge-purple" style="font-size: 10px;">MCP</span> AI Hub</a>
-          <a href="/api" class="nav-link">API</a>
-          <span style="font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); padding: 4px 8px; background: var(--bg-surface-elevated); border-radius: var(--radius-sm);">@{{ .User.Username }}</span>
-          <a href="/logout" class="btn btn-sm">Çıkış</a>
+          <a href="/dashboard#files" class="nav-item">pastes</a>
+          <a href="/dashboard#editor" class="nav-item">new</a>
+          <a href="/dashboard#mcp" class="nav-item">mcp</a>
+          <a href="/api" class="nav-item">api</a>
+          {{ if .IsAdmin }}
+            <a href="/dashboard#users" class="nav-item">users</a>
+          {{ end }}
+          <span class="user-badge">@{{ .User.Username }}</span>
+          <a href="/logout" class="nav-item nav-logout">logout</a>
         {{ else }}
-          <a href="/api" class="nav-link">API & MCP</a>
-          <a href="/login" class="btn btn-sm btn-primary">Giriş Yap</a>
+          <a href="/api" class="nav-item">api &amp; mcp</a>
+          <a href="/login" class="btn btn-sm btn-primary">login</a>
         {{ end }}
       </nav>
     </header>
 
-    <main>
+    <main class="site-main">
       {{ template "content" . }}
     </main>
 
-    <footer>
-      <div>BINGO &copy; 2026 &middot; SELF-HOSTED PASTEBIN, VAULT &amp; MCP SERVER</div>
-      <div>&lt;15 MB RAM &middot; ZERO-CGO &middot; AGENT-READY</div>
+    <footer class="site-footer">
+      <div class="footer-left">bingo &middot; minimal self-hosted vault &amp; mcp</div>
+      <div class="footer-right">cgo-free &middot; &lt;15mb ram</div>
     </footer>
   </div>
   
