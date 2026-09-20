@@ -209,6 +209,17 @@ func CreateTextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Eğer kullanıcı dosya adına uzantı yazmadıysa, arayüzden seçilen uzantıyı ekle
+	ext := strings.ToLower(filepath.Ext(filename))
+	selectedExt := strings.ToLower(strings.TrimSpace(r.FormValue("extension")))
+	if ext == "" && selectedExt != "" {
+		if !strings.HasPrefix(selectedExt, ".") {
+			selectedExt = "." + selectedExt
+		}
+		filename = filename + selectedExt
+		ext = selectedExt
+	}
+
 	// Dosya adını sanitize et
 	filename = sanitizeFilename(filename)
 	userDir := filepath.Join("uploads", user.Username)
@@ -226,12 +237,13 @@ func CreateTextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ext := strings.ToLower(filepath.Ext(filename))
 	mimeType := "text/plain"
 	if ext == ".md" {
 		mimeType = "text/markdown"
 	} else if ext == ".json" {
 		mimeType = "application/json"
+	} else if ext == ".html" {
+		mimeType = "text/html"
 	}
 
 	ttlStr := r.FormValue("ttl")

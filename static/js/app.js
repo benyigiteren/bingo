@@ -68,6 +68,45 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // 3.2 Akıllı İki Yönlü Dosya Uzantısı Senkronizasyonu
+  const filenameInput = document.getElementById('editor_filename');
+  const langSelect = document.getElementById('editor_language');
+
+  if (filenameInput && langSelect) {
+    // Dropdown değiştiğinde dosya adının uzantısını otomatik tamamla / güncelle
+    langSelect.addEventListener('change', () => {
+      const selectedExt = langSelect.value;
+      if (!selectedExt) return;
+
+      let currentName = filenameInput.value.trim();
+      if (!currentName) {
+        filenameInput.value = 'yeni_kod' + selectedExt;
+        return;
+      }
+
+      const dotIdx = currentName.lastIndexOf('.');
+      if (dotIdx !== -1) {
+        currentName = currentName.substring(0, dotIdx);
+      }
+      filenameInput.value = currentName + selectedExt;
+    });
+
+    // Dosya adı alanına uzantı yazıldığında dropdown'ı otomatik eşleştir
+    filenameInput.addEventListener('input', () => {
+      const val = filenameInput.value.trim();
+      const dotIdx = val.lastIndexOf('.');
+      if (dotIdx !== -1) {
+        const typedExt = val.substring(dotIdx).toLowerCase();
+        for (let i = 0; i < langSelect.options.length; i++) {
+          if (langSelect.options[i].value.toLowerCase() === typedExt) {
+            langSelect.selectedIndex = i;
+            break;
+          }
+        }
+      }
+    });
+  }
+
   // 4. Akordiyon (Gelişmiş Seçenekler)
   window.toggleAdvancedOptions = function() {
     const content = document.getElementById('accordion-content');
@@ -189,15 +228,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function matchesCategory(filename, cat) {
       if (cat === 'all') return true;
-      const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+      const lower = filename.toLowerCase().trim();
+      const dotIdx = lower.lastIndexOf('.');
+      const ext = dotIdx !== -1 ? lower.substring(dotIdx) : '';
+
       if (cat === 'code') {
-        return ['.go', '.py', '.js', '.ts', '.jsx', '.tsx', '.rs', '.c', '.cpp', '.h', '.java', '.html', '.css', '.sh', '.sql', '.yaml', '.yml', '.json'].includes(ext);
+        const codeExts = ['.go', '.py', '.js', '.ts', '.jsx', '.tsx', '.rs', '.c', '.cpp', '.h', '.hpp', '.java', '.html', '.css', '.sh', '.bash', '.sql', '.yaml', '.yml', '.json', '.php', '.rb', '.lua', '.vue', '.svelte'];
+        return codeExts.includes(ext) || lower === 'dockerfile' || lower === 'makefile' || lower.startsWith('docker-compose');
       }
       if (cat === 'text') {
-        return ['.md', '.txt', '.log', '.env', '.ini', '.conf', '.csv'].includes(ext);
+        const textExts = ['.md', '.txt', '.log', '.env', '.ini', '.conf', '.csv', '.tsv', '.xml', '.pdf', '.doc', '.docx'];
+        return textExts.includes(ext) || dotIdx === -1;
       }
       if (cat === 'images') {
-        return ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(ext);
+        const imgExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.bmp', '.ico', '.tiff', '.avif'];
+        return imgExts.includes(ext);
       }
       return true;
     }

@@ -1,32 +1,57 @@
 {{ define "content" }}
-<div style="max-width: 380px; margin: 60px auto;">
-  <div style="text-align: center; margin-bottom: 24px;">
-    <h1 style="font-size: 26px; font-weight: 800; letter-spacing: -0.03em; color: var(--text-main); margin-bottom: 6px;">Giriş Yap</h1>
-    <p style="font-size: 13.5px; color: var(--text-secondary);">Bingo kasanıza erişmek için bilgilerinizi girin</p>
+<div style="max-width: 420px; margin: 40px auto; width: 100%;">
+  <!-- Marka ve Başlık -->
+  <div style="text-align: center; margin-bottom: 28px;">
+    <div style="display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+      <span class="brand-text" style="font-size: 26px;">
+        <span class="brand-dot"></span>
+        bingo
+      </span>
+      <span class="brand-badge">kasa</span>
+    </div>
+    <h1 style="font-size: 24px; font-weight: 800; letter-spacing: -0.04em; color: var(--text-main); margin-bottom: 6px;">Kasanıza Giriş Yapın</h1>
+    <p style="font-size: 13.5px; color: var(--text-secondary);">Güvenli, şifreli ve minimalist kod &amp; dosya platformu</p>
   </div>
 
-  <div class="clean-card">
-    {{ if .Error }}
-      <div style="background-color: var(--btn-danger-bg); border: 1px solid var(--btn-danger-border); color: var(--btn-danger-text); font-size: 12.5px; padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 18px;">
-        {{ .Error }}
-      </div>
-    {{ end }}
+  <!-- Double-Bezel Form Kartı -->
+  <div class="double-bezel-wrapper" style="max-width: 100%;">
+    <div class="double-bezel-inner" style="padding: 30px;">
+      {{ if .Error }}
+        <div style="background-color: var(--btn-danger-bg); border: 1px solid var(--btn-danger-border); color: var(--btn-danger-text); font-size: 12.5px; padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <span>{{ .Error }}</span>
+        </div>
+      {{ end }}
 
-    <form action="/login" method="POST">
-      <div class="field-group" style="margin-bottom: 16px;">
-        <label class="field-label">Kullanıcı Adı</label>
-        <input type="text" name="username" class="hero-input" style="width: 100%;" placeholder="Kullanıcı adınız" required autofocus>
-      </div>
+      <form action="/login" method="POST">
+        <div class="field-group" style="margin-bottom: 18px;">
+          <label class="field-label">Kullanıcı Adı</label>
+          <div style="position: relative; display: flex; align-items: center;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="position: absolute; left: 14px; color: var(--text-muted); pointer-events: none;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <input type="text" name="username" class="studio-input hero-input" style="width: 100%; padding-left: 40px; height: 44px;" placeholder="Kullanıcı adınızı girin" required autofocus autocomplete="username">
+          </div>
+        </div>
 
-      <div class="field-group" style="margin-bottom: 20px;">
-        <label class="field-label">Şifre</label>
-        <input type="password" name="password" class="hero-input" style="width: 100%;" placeholder="Şifreniz" required>
-      </div>
+        <div class="field-group" style="margin-bottom: 24px;">
+          <label class="field-label">Şifre</label>
+          <div style="position: relative; display: flex; align-items: center;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="position: absolute; left: 14px; color: var(--text-muted); pointer-events: none;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            <input type="password" name="password" class="studio-input hero-input" style="width: 100%; padding-left: 40px; height: 44px;" placeholder="Şifrenizi girin" required autocomplete="current-password">
+          </div>
+        </div>
 
-      <button type="submit" class="btn-hero-submit" style="width: 100%; justify-content: center; height: 42px;">
-        Giriş Yap
-      </button>
-    </form>
+        <button type="submit" class="island-cta-btn btn-hero-submit" style="width: 100%; justify-content: center; height: 44px;">
+          <span>Korumalı Giriş Yap</span>
+          <div class="cta-icon-circle">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </div>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div style="text-align: center; margin-top: 24px; font-size: 12px; color: var(--text-muted);">
+    Bingo &middot; Korumalı Kişisel Kasa &middot; CGO-Free
   </div>
 </div>
 {{ end }}

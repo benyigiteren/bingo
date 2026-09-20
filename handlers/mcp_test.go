@@ -2,17 +2,20 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"bingo/db"
 	"bingo/handlers"
 	"bingo/mcp"
+	"bingo/middleware"
 )
 
 func setupTestDB(t *testing.T) (*db.User, func()) {
@@ -157,3 +160,41 @@ func TestTTLAndPasswordProtection(t *testing.T) {
 		t.Fatalf("Expected 1 expired file, found %d", len(expiredList))
 	}
 }
+
+func TestCreateTextWithExtension(t *testing.T) {
+	user, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Simulate user typing filename without extension and selecting .go
+	req := httptest.NewRequest("POST", "/dashboard/create-text", strings.NewReader("filename=mycode&extension=.go&content=package+main"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// Inject user into context
+	ctx := context.WithValue(req.Context(), middleware.UserContextKey, user)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	handlers.CreateTextHandler(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify file was created in DB with .go extension
+	files, err := db.GetFiles(user.ID, 10, 0)
+	if err != nil || len(files) == 0 {
+		t.Fatalf("Expected file to be found in db, err: %v", err)
+	}
+
+	found := false
+	for _, f := range files {
+		if f.Filename == "mycode.go" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Expected file to be named mycode.go, got: %s", files[0].Filename)
+	}
+}
+

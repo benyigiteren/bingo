@@ -592,7 +592,19 @@ button, input, select, textarea {
   flex-wrap: wrap;
 }
 
-.studio-input {
+/* Fix Chrome/Edge/Safari Autofill Background & Text Color */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--text-main) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-input) inset !important;
+  box-shadow: 0 0 0 1000px var(--bg-input) inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: var(--text-main) !important;
+}
+
+.studio-input, .hero-input, input[type="text"], input[type="password"] {
   background-color: var(--bg-input) !important;
   border: 1px solid var(--input-border) !important;
   border-radius: var(--radius-md);
@@ -603,12 +615,12 @@ button, input, select, textarea {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.studio-input:focus {
+.studio-input:focus, .hero-input:focus, input[type="text"]:focus, input[type="password"]:focus {
   border-color: var(--border-focus) !important;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
-.studio-input::placeholder {
+.studio-input::placeholder, .hero-input::placeholder, input::placeholder {
   color: var(--text-muted);
 }
 
@@ -723,28 +735,32 @@ button, input, select, textarea {
   border-top: 1px solid var(--card-core-border);
 }
 
-.island-cta-btn {
+.island-cta-btn, .btn-hero-submit {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  background-color: var(--btn-primary-bg);
-  color: var(--btn-primary-text);
+  background-color: var(--btn-primary-bg) !important;
+  color: var(--btn-primary-text) !important;
   border: none;
   font-size: 13.5px;
   font-weight: 600;
-  padding: 8px 10px 8px 20px;
+  padding: 8px 16px 8px 20px;
   border-radius: var(--radius-full);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  text-decoration: none;
+  line-height: 1;
 }
 
-.island-cta-btn:hover {
-  background-color: var(--btn-primary-hover);
+.island-cta-btn:hover, .btn-hero-submit:hover {
+  background-color: var(--btn-primary-hover) !important;
+  color: var(--btn-primary-text) !important;
   transform: translateY(-1px);
 }
 
-.island-cta-btn:active {
+.island-cta-btn:active, .btn-hero-submit:active {
   transform: scale(0.98);
 }
 
