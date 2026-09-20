@@ -56,6 +56,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  // 3.1 Canlı Karakter ve Satır Sayacı
+  const editorContentElem = document.getElementById('editor_content');
+  const charCounterElem = document.getElementById('char-counter');
+  if (editorContentElem && charCounterElem) {
+    editorContentElem.addEventListener('input', () => {
+      const val = editorContentElem.value;
+      const chars = val.length;
+      const lines = val ? val.split('\n').length : 0;
+      charCounterElem.textContent = `${chars} karakter · ${lines} satır`;
+    });
+  }
+
   // 4. Akordiyon (Gelişmiş Seçenekler)
   window.toggleAdvancedOptions = function() {
     const content = document.getElementById('accordion-content');
