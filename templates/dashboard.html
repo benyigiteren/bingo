@@ -41,11 +41,11 @@
         </div>
 
         <!-- Mod 2: Kod ve Metin Yazma Formu -->
-        <form action="/dashboard/create-text" method="POST" id="hero-editor-pane" class="hero-editor-pane">
+        <form action="/dashboard/create-text" method="POST" id="hero-editor-pane" class="hero-editor-pane" autocomplete="off">
           <input type="hidden" name="csrf_token" value="{{ .CsrfToken }}">
 
           <div class="editor-inputs-row">
-            <input type="text" id="editor_filename" name="filename" class="studio-input" style="flex: 2; min-width: 220px;" placeholder="Dosya adı (örn. notlar.md, app.go, veriler.json)" required>
+            <input type="text" id="editor_filename" name="filename" class="studio-input" style="flex: 2; min-width: 220px;" placeholder="Dosya adı (örn. notlar.md, app.go, veriler.json)" required autocomplete="off">
             
             <select id="editor_language" name="extension" class="studio-select" style="flex: 1; min-width: 140px;">
               <option value=".txt">Düz Metin (.txt)</option>
@@ -69,7 +69,7 @@
               </span>
               <span id="char-counter">0 karakter</span>
             </div>
-            <textarea id="editor_content" name="content" class="studio-textarea" placeholder="// Kodunuzu, notunuzu veya metninizi buraya yazın..." required></textarea>
+            <textarea id="editor_content" name="content" class="studio-textarea" placeholder="// Kodunuzu, notunuzu veya metninizi buraya yazın..." required spellcheck="false"></textarea>
           </div>
 
           <!-- Akordiyon (Gelişmiş Seçenekler) -->
@@ -94,7 +94,7 @@
 
               <div class="field-group">
                 <label class="field-label">Şifre Koruması (İsteğe Bağlı)</label>
-                <input type="password" name="password" class="studio-input" placeholder="Erişim şifresi belirleyin">
+                <input type="password" name="password" class="studio-input" placeholder="Erişim şifresi belirleyin" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')">
               </div>
 
               <div class="field-group" style="justify-content: flex-end; padding-bottom: 8px;">
@@ -320,17 +320,17 @@
   <!-- Yeni Kullanıcı Ekle Kartı -->
   <div class="clean-card">
     <h2 style="font-size: 17px; font-weight: 700; color: var(--text-main); margin-bottom: 16px;">Yeni Kullanıcı Hesabı Ekle</h2>
-    <form action="/dashboard/users/create" method="POST" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+    <form action="/dashboard/users/create" method="POST" autocomplete="off" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
       <input type="hidden" name="csrf_token" value="{{ .CsrfToken }}">
 
       <div style="flex: 1; min-width: 160px;">
         <label class="field-label" style="margin-bottom: 4px; display: block;">Kullanıcı Adı</label>
-        <input type="text" name="username" class="studio-input" style="width: 100%;" placeholder="kullanici_adi" required>
+        <input type="text" name="username" class="studio-input" style="width: 100%;" placeholder="kullanici_adi" required autocomplete="off">
       </div>
 
       <div style="flex: 1; min-width: 160px;">
         <label class="field-label" style="margin-bottom: 4px; display: block;">Şifre</label>
-        <input type="password" name="password" class="studio-input" style="width: 100%;" placeholder="En az 6 karakter" required>
+        <input type="password" name="password" class="studio-input" style="width: 100%;" placeholder="En az 6 karakter" required autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')">
       </div>
 
       <div style="width: 160px;">

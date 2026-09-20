@@ -3,6 +3,16 @@
 // ==========================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
+  // 0. Otomatik Doldurma (Autofill) Önleyici Güvenlik
+  // Tarayıcıların kasa/oluşturma alanlarına yönetici şifrelerini istenmeyen şekilde basmasını engeller
+  setTimeout(() => {
+    document.querySelectorAll('input[type="password"]').forEach(input => {
+      if (input.name === 'password' && !input.closest('#login-form')) {
+        input.value = '';
+      }
+    });
+  }, 100);
+
   // 1. Tema Yönetimi (Açık / Koyu Tema - Varsayılan: Açık/Koyu Tercihi)
   const savedTheme = localStorage.getItem('bingo-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.setAttribute('data-theme', savedTheme);
