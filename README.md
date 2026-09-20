@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/bingo-banner.webp" alt="Bingo — Self-hosted dosya ve metin paylaşım platformu" width="100%" />
+<img src="assets/bingo-banner.webp" alt="Bingo: Self-hosted dosya ve metin paylaşım platformu" width="100%" />
 
 # Bingo
 
@@ -116,7 +116,7 @@ bingo mcp --api-key="bg_api_anahtariniz"
 
 ## Hızlı Başlangıç
 
-### Yöntem A — Docker Compose (Önerilen)
+### Yöntem A: Docker Compose (Önerilen)
 
 ```bash
 git clone https://github.com/benyigiteren/bingo.git
@@ -126,7 +126,7 @@ docker-compose up -d
 
 Tarayıcınızdan `http://localhost:8080` adresine gidin. Karşınıza çıkacak **İlk Kurulum** ekranından ilk kullanıcıyı oluşturun. Bu kullanıcı **Süper Yönetici** olur ve kayıtlar kapatılır.
 
-### Yöntem B — GitHub Container Registry (GHCR) ile Tek Komutta Çalıştırma
+### Yöntem B: GitHub Container Registry (GHCR) ile Tek Komutta Çalıştırma
 
 ```bash
 docker run -d \
@@ -138,7 +138,7 @@ docker run -d \
   ghcr.io/benyigiteren/bingo:latest
 ```
 
-### Yöntem C — Go ile Yerel Derleme
+### Yöntem C: Go ile Yerel Derleme
 
 ```bash
 # Bağımlılıkları indir

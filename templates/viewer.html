@@ -46,14 +46,11 @@
           {{ if .IsBurn }}<span class="badge badge-burn">tek seferlik</span>{{ end }}
           {{ if .HasPassword }}<span class="badge badge-locked">şifreli</span>{{ end }}
         </div>
-        <div style="display: flex; gap: 10px; font-size: 12px; color: var(--text-muted); margin-top: 5px; flex-wrap: wrap;">
-          <span>Paylaşan: <strong>@{{ .Username }}</strong></span>
-          <span>&middot;</span>
-          <span>Boyut: {{ .FileSize }}</span>
-          <span>&middot;</span>
-          <span>{{ .Views }} görüntülenme</span>
-          <span>&middot;</span>
-          <span>Tarih: {{ .CreatedAt }}</span>
+        <div style="display: flex; gap: 8px; font-size: 12px; color: var(--text-muted); margin-top: 6px; flex-wrap: wrap; align-items: center;">
+          <span class="badge">@{{ .Username }}</span>
+          <span class="badge">{{ .FileSize }}</span>
+          <span class="badge">{{ .Views }} görüntülenme</span>
+          <span class="badge">{{ .CreatedAt }}</span>
         </div>
       </div>
 

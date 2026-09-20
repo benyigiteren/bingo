@@ -1,5 +1,5 @@
 // ==========================================================================
-// Bingo — İstemci Etkileşim ve Arayüz Motoru (100% Türkçe)
+// Bingo - Istemci Etkilesim ve Arayuz Motoru (100% Turkce)
 // ==========================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -38,10 +38,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 2. Mobil Sidebar Aç/Kapa
+  // 2. Mobil Sidebar Aç/Kapa & Karartma Perdesi
   window.toggleSidebar = function() {
     const sidebar = document.getElementById('app-sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
     if (sidebar) sidebar.classList.toggle('open');
+    if (backdrop) backdrop.classList.toggle('open');
   };
 
   // 3. Hero Paylaşım Modu Değiştirici (Dosya Yükle / Kod Editörü)
@@ -175,7 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
         history.pushState(null, '', '#' + tab);
         activateTab(tab);
         const sidebar = document.getElementById('app-sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
         if (sidebar) sidebar.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('open');
       }
     });
   });

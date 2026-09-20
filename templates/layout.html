@@ -4,24 +4,27 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ if .Title }}{{ .Title }} — Bingo{{ else }}Bingo — Dosya &amp; Kod Kasası{{ end }}</title>
+  <title>{{ if .Title }}{{ .Title }} · Bingo{{ else }}Bingo · Dosya ve Kod Kasası{{ end }}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=9">
-  <script src="/static/js/app.js?v=9"></script>
+  <link rel="stylesheet" href="/static/css/style.css?v=10">
+  <script src="/static/js/app.js?v=10"></script>
 </head>
 <body>
   <div class="app-container">
     {{ if .User }}
+    <!-- Mobil Kenar Çubuğu Karartma Perdesi -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
     <!-- Sol Kenar Çubuğu (Studio Sidebar) -->
     <aside class="app-sidebar" id="app-sidebar">
       <div class="sidebar-brand">
-        <span class="brand-text">
-          <span class="brand-dot"></span>
-          bingo
-        </span>
-        <span class="brand-badge">kasa</span>
+        <a href="/dashboard#share" class="brand-link">
+          <span class="brand-logo-text">bingo<span class="brand-logo-dot"></span></span>
+          <span class="brand-badge">kasa</span>
+        </a>
       </div>
 
       <nav class="sidebar-nav">
