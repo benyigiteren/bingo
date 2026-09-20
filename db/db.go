@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -25,15 +28,25 @@ type User struct {
 }
 
 type File struct {
-	ID           int64     `json:"id"`
-	UserID       int64     `json:"user_id"`
-	Username     string    `json:"username"` // Joined from users table
-	Filename     string    `json:"filename"`
-	OriginalName string    `json:"original_name"`
-	FileSize     int64     `json:"file_size"`
-	MimeType     string    `json:"mime_type"`
-	Views        int       `json:"views"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           int64      `json:"id"`
+	UserID       int64      `json:"user_id"`
+	Username     string     `json:"username"` // Joined from users table
+	Filename     string     `json:"filename"`
+	OriginalName string     `json:"original_name"`
+	FileSize     int64      `json:"file_size"`
+	MimeType     string     `json:"mime_type"`
+	Views        int        `json:"views"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	IsBurn       bool       `json:"is_burn"`
+	PasswordHash string     `json:"-"`
+	HasPassword  bool       `json:"has_password"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+type FileOptions struct {
+	ExpiresAt *time.Time
+	IsBurn    bool
+	Password  string
 }
 
 type Stats struct {
@@ -92,6 +105,9 @@ func createTables() error {
 		file_size INTEGER NOT NULL,
 		mime_type TEXT NOT NULL,
 		views INTEGER NOT NULL DEFAULT 0,
+		expires_at DATETIME,
+		is_burn INTEGER NOT NULL DEFAULT 0,
+		password_hash TEXT,
 		created_at DATETIME NOT NULL,
 		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
 		UNIQUE(user_id, filename)
@@ -103,7 +119,28 @@ func createTables() error {
 	}
 
 	_, err = DB.Exec(filesTable)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return migrateSchema()
+}
+
+func migrateSchema() error {
+	columns := map[string]string{
+		"expires_at":    "DATETIME",
+		"is_burn":       "INTEGER NOT NULL DEFAULT 0",
+		"password_hash": "TEXT",
+	}
+
+	for col, colType := range columns {
+		var count int
+		err := DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('files') WHERE name = ?", col).Scan(&count)
+		if err == nil && count == 0 {
+			_, _ = DB.Exec(fmt.Sprintf("ALTER TABLE files ADD COLUMN %s %s", col, colType))
+		}
+	}
+	return nil
 }
 
 // Helper to generate a random API Key
@@ -270,26 +307,81 @@ func DeleteUser(id int64) error {
 	return err
 }
 
-// CreateFile registers a new file record
-func CreateFile(userID int64, filename, originalName string, fileSize int64, mimeType string) (*File, error) {
-	createdAt := time.Now()
-	_, err := DB.Exec(
-		"INSERT INTO files (user_id, filename, original_name, file_size, mime_type, views, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
-		userID, filename, originalName, fileSize, mimeType, createdAt,
+// Helper to scan a file row with optional fields
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanFileRow(scanner rowScanner) (*File, error) {
+	var f File
+	var expiresAt sql.NullTime
+	var isBurnInt int
+	var passwordHash sql.NullString
+
+	err := scanner.Scan(
+		&f.ID, &f.UserID, &f.Username, &f.Filename, &f.OriginalName,
+		&f.FileSize, &f.MimeType, &f.Views, &expiresAt, &isBurnInt, &passwordHash, &f.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	// Fetch username for returned struct
-	var username string
-	err = DB.QueryRow("SELECT username FROM users WHERE id = ?", userID).Scan(&username)
+	if expiresAt.Valid {
+		t := expiresAt.Time
+		f.ExpiresAt = &t
+	}
+	f.IsBurn = isBurnInt == 1
+	if passwordHash.Valid && passwordHash.String != "" {
+		f.PasswordHash = passwordHash.String
+		f.HasPassword = true
+	}
+
+	return &f, nil
+}
+
+// CreateFile registers a new file record with default options
+func CreateFile(userID int64, filename, originalName string, fileSize int64, mimeType string) (*File, error) {
+	return CreateFileWithOpts(userID, filename, originalName, fileSize, mimeType, FileOptions{})
+}
+
+// CreateFileWithOpts registers a new file record with TTL, Burn, and Password options
+func CreateFileWithOpts(userID int64, filename, originalName string, fileSize int64, mimeType string, opts FileOptions) (*File, error) {
+	createdAt := time.Now()
+	var passHash sql.NullString
+	if opts.Password != "" {
+		h, err := bcrypt.GenerateFromPassword([]byte(opts.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash file password: %w", err)
+		}
+		passHash = sql.NullString{String: string(h), Valid: true}
+	}
+
+	isBurnInt := 0
+	if opts.IsBurn {
+		isBurnInt = 1
+	}
+
+	var expiresAt sql.NullTime
+	if opts.ExpiresAt != nil {
+		expiresAt = sql.NullTime{Time: *opts.ExpiresAt, Valid: true}
+	}
+
+	res, err := DB.Exec(`
+		INSERT INTO files (user_id, filename, original_name, file_size, mime_type, views, expires_at, is_burn, password_hash, created_at)
+		VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+		userID, filename, originalName, fileSize, mimeType, expiresAt, isBurnInt, passHash, createdAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	var fileID int64
-	err = DB.QueryRow("SELECT last_insert_rowid()").Scan(&fileID)
+	fileID, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	var username string
+	err = DB.QueryRow("SELECT username FROM users WHERE id = ?", userID).Scan(&username)
 	if err != nil {
 		return nil, err
 	}
@@ -303,54 +395,72 @@ func CreateFile(userID int64, filename, originalName string, fileSize int64, mim
 		FileSize:     fileSize,
 		MimeType:     mimeType,
 		Views:        0,
+		ExpiresAt:    opts.ExpiresAt,
+		IsBurn:       opts.IsBurn,
+		PasswordHash: passHash.String,
+		HasPassword:  passHash.Valid && passHash.String != "",
 		CreatedAt:    createdAt,
 	}, nil
 }
 
 // GetFile fetches metadata for a file by user and filename
 func GetFile(username, filename string) (*File, error) {
-	var f File
-	err := DB.QueryRow(`
-		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.created_at
+	row := DB.QueryRow(`
+		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
 		FROM files f
 		JOIN users u ON f.user_id = u.id
 		WHERE u.username = ? AND f.filename = ?`,
 		username, filename,
-	).Scan(&f.ID, &f.UserID, &f.Username, &f.Filename, &f.OriginalName, &f.FileSize, &f.MimeType, &f.Views, &f.CreatedAt)
+	)
 
+	f, err := scanFileRow(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &f, nil
+	return f, nil
 }
 
 // GetFileByID fetches file metadata by file ID
 func GetFileByID(fileID int64) (*File, error) {
-	var f File
-	err := DB.QueryRow(`
-		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.created_at
+	row := DB.QueryRow(`
+		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
 		FROM files f
 		JOIN users u ON f.user_id = u.id
 		WHERE f.id = ?`,
 		fileID,
-	).Scan(&f.ID, &f.UserID, &f.Username, &f.Filename, &f.OriginalName, &f.FileSize, &f.MimeType, &f.Views, &f.CreatedAt)
+	)
 
+	f, err := scanFileRow(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &f, nil
+	return f, nil
 }
 
 // IncrementFileViews increases the view count by 1
 func IncrementFileViews(fileID int64) error {
 	_, err := DB.Exec("UPDATE files SET views = views + 1 WHERE id = ?", fileID)
 	return err
+}
+
+// CheckFilePassword checks if the provided password matches the file password hash
+func CheckFilePassword(fileID int64, password string) (bool, error) {
+	var hash sql.NullString
+	err := DB.QueryRow("SELECT password_hash FROM files WHERE id = ?", fileID).Scan(&hash)
+	if err != nil {
+		return false, err
+	}
+	if !hash.Valid || hash.String == "" {
+		return true, nil // not password protected
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(hash.String), []byte(password))
+	return err == nil, nil
 }
 
 // DeleteFile deletes a file record
@@ -362,7 +472,7 @@ func DeleteFile(fileID int64) error {
 // GetFiles fetches files for a specific user
 func GetFiles(userID int64, limit, offset int) ([]File, error) {
 	rows, err := DB.Query(`
-		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.created_at
+		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
 		FROM files f
 		JOIN users u ON f.user_id = u.id
 		WHERE f.user_id = ?
@@ -377,12 +487,11 @@ func GetFiles(userID int64, limit, offset int) ([]File, error) {
 
 	var files []File
 	for rows.Next() {
-		var f File
-		err := rows.Scan(&f.ID, &f.UserID, &f.Username, &f.Filename, &f.OriginalName, &f.FileSize, &f.MimeType, &f.Views, &f.CreatedAt)
+		f, err := scanFileRow(rows)
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, f)
+		files = append(files, *f)
 	}
 	return files, nil
 }
@@ -390,7 +499,7 @@ func GetFiles(userID int64, limit, offset int) ([]File, error) {
 // GetAllFiles fetches all files in the system (Super Admin view)
 func GetAllFiles(limit, offset int) ([]File, error) {
 	rows, err := DB.Query(`
-		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.created_at
+		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
 		FROM files f
 		JOIN users u ON f.user_id = u.id
 		ORDER BY f.created_at DESC
@@ -404,14 +513,104 @@ func GetAllFiles(limit, offset int) ([]File, error) {
 
 	var files []File
 	for rows.Next() {
-		var f File
-		err := rows.Scan(&f.ID, &f.UserID, &f.Username, &f.Filename, &f.OriginalName, &f.FileSize, &f.MimeType, &f.Views, &f.CreatedAt)
+		f, err := scanFileRow(rows)
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, f)
+		files = append(files, *f)
 	}
 	return files, nil
+}
+
+// SearchFiles searches files by filename or original name
+func SearchFiles(userID int64, isAdmin bool, query string, limit int) ([]File, error) {
+	pattern := "%" + strings.TrimSpace(query) + "%"
+	var rows *sql.Rows
+	var err error
+
+	if isAdmin {
+		rows, err = DB.Query(`
+			SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
+			FROM files f
+			JOIN users u ON f.user_id = u.id
+			WHERE f.filename LIKE ? OR f.original_name LIKE ?
+			ORDER BY f.created_at DESC
+			LIMIT ?`,
+			pattern, pattern, limit,
+		)
+	} else {
+		rows, err = DB.Query(`
+			SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
+			FROM files f
+			JOIN users u ON f.user_id = u.id
+			WHERE f.user_id = ? AND (f.filename LIKE ? OR f.original_name LIKE ?)
+			ORDER BY f.created_at DESC
+			LIMIT ?`,
+			userID, pattern, pattern, limit,
+		)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []File
+	for rows.Next() {
+		f, err := scanFileRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, *f)
+	}
+	return files, nil
+}
+
+// GetExpiredFiles fetches files whose expiration time has passed
+func GetExpiredFiles() ([]File, error) {
+	now := time.Now()
+	rows, err := DB.Query(`
+		SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
+		FROM files f
+		JOIN users u ON f.user_id = u.id
+		WHERE f.expires_at IS NOT NULL AND f.expires_at <= ?`,
+		now,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []File
+	for rows.Next() {
+		f, err := scanFileRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, *f)
+	}
+	return files, nil
+}
+
+// DeleteExpiredFiles deletes expired files from both disk and SQLite
+func DeleteExpiredFiles(uploadsDir string) (int, error) {
+	expired, err := GetExpiredFiles()
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for _, f := range expired {
+		// Delete from disk
+		targetPath := filepath.Join(uploadsDir, f.Username, f.Filename)
+		_ = os.Remove(targetPath)
+
+		// Delete from DB
+		if err := DeleteFile(f.ID); err == nil {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // GetStats fetches high level file statistics

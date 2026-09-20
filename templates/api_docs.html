@@ -1,83 +1,94 @@
 {{ define "content" }}
-<div style="margin-bottom: 32px;">
-  <span class="mono-meta">Geliştirici Merkezi</span>
-  <h1 class="serif-title" style="margin-top: 4px;">API Dokümantasyonu</h1>
-  <p class="form-label" style="font-weight: normal; margin-top: 8px; max-width: 600px;">
-    Bingo, geliştirici ergonomisi ve yapay zeka ajanları (Agentic AI) entegrasyonu hedeflenerek geliştirilmiştir. Aşağıdaki uç noktaları (endpoints) kullanarak paylaşımlarınızı programatik olarak yapabilirsiniz.
+<div style="margin-bottom: 28px;">
+  <span style="font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); text-transform: uppercase;">Geliştirici &amp; AI Merkezi</span>
+  <h1 style="font-size: 26px; font-weight: 700; color: #fff; margin-top: 4px; letter-spacing: -0.02em;">API &amp; MCP Dokümantasyonu</h1>
+  <p style="font-size: 14px; color: var(--text-secondary); margin-top: 6px; max-width: 650px;">
+    Bingo; REST API ve Model Context Protocol (MCP) üzerinden Claude, Cursor, Gemini, terminal betikleri ve yapay zeka ajanları ile tam uyumlu çalışır.
   </p>
 </div>
 
-<div class="card">
-  <h2 style="font-size: 18px; margin-bottom: 12px;">Kimlik Doğrulama (Authentication)</h2>
-  <p style="margin-bottom: 16px;">
-    Tüm API uç noktaları, kişisel API anahtarınızı kullanarak kimlik doğrulaması yapmanızı gerektirir. Doğrulamayı iki yöntemden biriyle yapabilirsiniz:
-  </p>
-  <ul>
-    <li style="margin-bottom: 8px;">
-      <code>X-API-Key</code> istek başlığı (header) ile göndererek:
-      <pre style="background-color: var(--code-bg); padding: 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 13px; border: 1px solid var(--border-color); margin-top: 4px;">X-API-Key: bg_api_anahtariniz_buraya</pre>
-    </li>
-    <li>
-      Standart HTTP Bearer token yetkilendirme başlığı (header) ile göndererek:
-      <pre style="background-color: var(--code-bg); padding: 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 13px; border: 1px solid var(--border-color); margin-top: 4px;">Authorization: Bearer bg_api_anahtariniz_buraya</pre>
-    </li>
-  </ul>
-</div>
-
-<!-- API Uç Noktası: POST /api/upload -->
-<div class="api-endpoint">
-  <div class="api-endpoint-header">
-    <span class="method">POST</span>
-    <span class="path">/api/upload</span>
+<!-- MCP Protocol Hub Box -->
+<div class="card" style="margin-bottom: 24px; border-color: rgba(168, 85, 247, 0.3); background: linear-gradient(180deg, rgba(20, 22, 30, 1) 0%, rgba(26, 20, 38, 0.4) 100%);">
+  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+    <span class="badge badge-purple" style="font-size: 11px;">1. SINIF DESTEK</span>
+    <h2 style="font-size: 18px; color: #fff;">Model Context Protocol (MCP) Uç Noktası</h2>
   </div>
-  <div class="api-endpoint-body">
-    <p style="margin-bottom: 16px;">
-      Dosya, resim veya metin yükler. Bu uç nokta üç farklı yük biçimini dinamik olarak ayrıştırabilir:
-    </p>
+  <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 14px;">
+    Bingo, standart <code>/mcp</code> rotası üzerinden HTTP SSE (Server-Sent Events) ve doğrudan JSON-RPC 2.0 akışlarını destekler. Cursor ve Claude Desktop gibi MCP istemcileri bu adrese bağlanarak dosya yükleme, okuma, arama ve imha işlemlerini otonom olarak gerçekleştirebilir.
+  </p>
+  <div class="mcp-box">
+    <button class="btn btn-sm mcp-copy-btn" onclick="copyText('{{ .BaseURL }}/mcp?api_key=bg_api_anahtariniz', 'MCP URL kopyalandı!')">URL'yi Kopyala</button>
+    <pre>{{ .BaseURL }}/mcp?api_key=bg_api_anahtariniz</pre>
+  </div>
+  <div style="margin-top: 14px; font-size: 12.5px; color: var(--text-muted);">
+    Yerel Terminal / CLI Modu: <code>bingo mcp --api-key="bg_api_anahtariniz"</code>
+  </div>
+</div>
 
-    <!-- Biçim 1: Multipart Form -->
-    <h3 style="font-size: 14px; margin-bottom: 8px; font-weight: 600;">1. Multipart Dosya Yükleme</h3>
-    <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 8px;">
-      Resim, arşiv, PDF veya doğrudan kod dosyası paylaşımı için en uygun yöntemdir. Dosya, <code>file</code> form anahtarı altında gönderilmelidir.
-    </p>
-    <pre>curl -X POST \
-  -H "X-API-Key: bg_api_anahtariniz_buraya" \
-  -F "file=@/dosya/yolu/resim.png" \
-  {{ .BaseURL }}/api/upload</pre>
+<div class="card" style="margin-bottom: 24px;">
+  <h2 style="font-size: 16px; color: #fff; margin-bottom: 10px;">Kimlik Doğrulama (Authentication)</h2>
+  <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 14px;">
+    Tüm REST ve MCP istekleri kişisel API anahtarınızı gerektirir:
+  </p>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+    <div style="background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+      <strong style="font-size: 12px; color: var(--text-muted);">HTTP Header</strong>
+      <div style="font-family: var(--font-mono); font-size: 12.5px; margin-top: 4px; color: #e2e8f0;">X-API-Key: bg_...</div>
+    </div>
+    <div style="background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+      <strong style="font-size: 12px; color: var(--text-muted);">Bearer Token</strong>
+      <div style="font-family: var(--font-mono); font-size: 12.5px; margin-top: 4px; color: #e2e8f0;">Authorization: Bearer bg_...</div>
+    </div>
+    <div style="background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+      <strong style="font-size: 12px; color: var(--text-muted);">URL Query (SSE &amp; Tools için)</strong>
+      <div style="font-family: var(--font-mono); font-size: 12.5px; margin-top: 4px; color: #e2e8f0;">?api_key=bg_...</div>
+    </div>
+  </div>
+</div>
 
-    <!-- Biçim 2: JSON payload -->
-    <h3 style="font-size: 14px; margin-top: 24px; margin-bottom: 8px; font-weight: 600;">2. JSON Metin Yükleme</h3>
-    <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 8px;">
-      Kod yazan veya metin çıktısı üreten yapay zeka ajanları (Agentic AI) için özel olarak optimize edilmiştir. İçerisinde <code>text</code> ve <code>filename</code> anahtarları bulunan bir JSON gövdesi gönderin.
-    </p>
+<!-- POST /api/upload -->
+<div class="card">
+  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+    <span class="badge badge-green" style="font-size: 12px;">POST</span>
+    <code style="font-size: 15px; color: #fff; font-weight: 600;">/api/upload</code>
+  </div>
+
+  <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 18px;">
+    Dosya, görsel veya metin/kod yükler. İsteğe bağlı olarak <code>ttl</code>, <code>is_burn</code> ve <code>password</code> parametrelerini kabul eder.
+  </p>
+
+  <h3 style="font-size: 14px; color: #fff; margin-bottom: 8px;">1. JSON ile Kod / Metin Yükleme (Önerilen)</h3>
+  <div class="mcp-box" style="margin-bottom: 20px;">
     <pre>curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: bg_api_anahtariniz_buraya" \
-  -d '{"text": "# Deneme Belgesi\nBingo API üzerinden merhaba!", "filename": "deneme.md"}' \
+  -H "X-API-Key: bg_api_anahtariniz" \
+  -d '{
+    "text": "package main\n\nfunc main() {}",
+    "filename": "server.go",
+    "ttl": "1d",
+    "is_burn": false,
+    "password": "secret_pass_optional"
+  }' \
   {{ .BaseURL }}/api/upload</pre>
+  </div>
 
-    <!-- Biçim 3: Ham Gövde payload -->
-    <h3 style="font-size: 14px; margin-top: 24px; margin-bottom: 8px; font-weight: 600;">3. Ham Gövde (Raw Body) Yükleme</h3>
-    <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 8px;">
-      Terminal çıktısını veya ham metin akışlarını boru hattı (pipe) ile Bingo'ya yönlendirmenizi sağlar. İçerik varsayılan olarak bir metin dosyası şeklinde kaydedilir.
-    </p>
-    <pre>echo "Sunucu logları..." | curl -X POST \
+  <h3 style="font-size: 14px; color: #fff; margin-bottom: 8px;">2. Multipart / Dosya Yükleme</h3>
+  <div class="mcp-box" style="margin-bottom: 20px;">
+    <pre>curl -X POST \
+  -H "X-API-Key: bg_api_anahtariniz" \
+  -F "file=@resim.png" \
+  -F "ttl=1h" \
+  {{ .BaseURL }}/api/upload</pre>
+  </div>
+
+  <h3 style="font-size: 14px; color: #fff; margin-bottom: 8px;">3. Pipe / Akış Yükleme</h3>
+  <div class="mcp-box">
+    <pre>docker logs app | curl -X POST \
   -H "Content-Type: text/plain" \
-  -H "X-API-Key: bg_api_anahtariniz_buraya" \
+  -H "X-API-Key: bg_api_anahtariniz" \
+  -H "X-TTL: 10m" \
   --data-binary @- \
   {{ .BaseURL }}/api/upload</pre>
-
-    <!-- Yanıt Şeması -->
-    <h3 style="font-size: 14px; margin-top: 24px; margin-bottom: 8px; font-weight: 600;">Başarılı Yanıt Şeması (JSON)</h3>
-    <pre>{
-  "success": true,
-  "filename": "resim_1.png",
-  "url": "{{ .BaseURL }}/yonetici/resim_1.png",
-  "size": 14205,
-  "mime_type": "image/png",
-  "views": 0,
-  "created_at": "2026-07-05T17:16:05Z"
-}</pre>
   </div>
 </div>
 {{ end }}

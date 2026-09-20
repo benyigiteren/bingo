@@ -21,7 +21,12 @@ func ShowAPIDocs(w http.ResponseWriter, r *http.Request) {
 				{
 					"path":        "/api/upload",
 					"method":      "POST",
-					"description": "Dosya veya düz metin yükler. X-API-Key başlığı veya Bearer token ile doğrulanır.",
+					"description": "Dosya veya düz metin yükler. X-API-Key başlığı veya Bearer token ile doğrulanır. TTL, Burn, Password destekler.",
+				},
+				{
+					"path":        "/mcp",
+					"method":      "GET, POST",
+					"description": "Model Context Protocol (MCP) sunucusu. Claude Desktop, Cursor, Gemini ve GPT ile çift taraflı araç ve bağlam entegrasyonu.",
 				},
 				{
 					"path":        "/api/stats",

@@ -161,7 +161,16 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 		mimeType = "application/octet-stream"
 	}
 
-	dbFile, err := db.CreateFile(user.ID, filename, header.Filename, written, mimeType)
+	ttlStr := r.FormValue("ttl")
+	expiresAt := parseTTLDuration(ttlStr)
+	isBurn := r.FormValue("is_burn") == "1" || r.FormValue("is_burn") == "true"
+	password := strings.TrimSpace(r.FormValue("password"))
+
+	dbFile, err := db.CreateFileWithOpts(user.ID, filename, header.Filename, written, mimeType, db.FileOptions{
+		ExpiresAt: expiresAt,
+		IsBurn:    isBurn,
+		Password:  password,
+	})
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -225,7 +234,16 @@ func CreateTextHandler(w http.ResponseWriter, r *http.Request) {
 		mimeType = "application/json"
 	}
 
-	_, err = db.CreateFile(user.ID, filename, filename, int64(len([]byte(content))), mimeType)
+	ttlStr := r.FormValue("ttl")
+	expiresAt := parseTTLDuration(ttlStr)
+	isBurn := r.FormValue("is_burn") == "1" || r.FormValue("is_burn") == "true"
+	password := strings.TrimSpace(r.FormValue("password"))
+
+	_, err = db.CreateFileWithOpts(user.ID, filename, filename, int64(len([]byte(content))), mimeType, db.FileOptions{
+		ExpiresAt: expiresAt,
+		IsBurn:    isBurn,
+		Password:  password,
+	})
 	if err != nil {
 		http.Error(w, "Veritabanı hatası: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -245,9 +263,40 @@ type APIUploadResponse struct {
 	Error     string  `json:"error,omitempty"`
 }
 
+func parseTTLDuration(ttlStr string) *time.Time {
+	if ttlStr == "" || ttlStr == "forever" {
+		return nil
+	}
+	var d time.Duration
+	switch strings.ToLower(ttlStr) {
+	case "10m":
+		d = 10 * time.Minute
+	case "1h":
+		d = 1 * time.Hour
+	case "1d":
+		d = 24 * time.Hour
+	case "1w":
+		d = 7 * 24 * time.Hour
+	case "30d":
+		d = 30 * 24 * time.Hour
+	default:
+		parsed, err := time.ParseDuration(ttlStr)
+		if err == nil && parsed > 0 {
+			d = parsed
+		} else {
+			return nil
+		}
+	}
+	exp := time.Now().Add(d)
+	return &exp
+}
+
 type JSONUploadRequest struct {
 	Text     string `json:"text"`
 	Filename string `json:"filename"`
+	TTL      string `json:"ttl"`
+	IsBurn   bool   `json:"is_burn"`
+	Password string `json:"password"`
 }
 
 // APIUploadHandler harici API anahtarı ile yapılan yüklemeleri yönetir
@@ -281,6 +330,7 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var mimeType string
 	var size int64
 	var originalName string
+	var fileOpts db.FileOptions
 
 	if strings.HasPrefix(contentType, "application/json") {
 		var req JSONUploadRequest
@@ -323,6 +373,12 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 			mimeType = "application/json"
 		} else {
 			mimeType = "text/plain"
+		}
+
+		fileOpts = db.FileOptions{
+			ExpiresAt: parseTTLDuration(req.TTL),
+			IsBurn:    req.IsBurn,
+			Password:  req.Password,
 		}
 
 	} else if strings.HasPrefix(contentType, "multipart/form-data") {
@@ -369,6 +425,12 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}
+
+		fileOpts = db.FileOptions{
+			ExpiresAt: parseTTLDuration(r.FormValue("ttl")),
+			IsBurn:    r.FormValue("is_burn") == "1" || r.FormValue("is_burn") == "true",
+			Password:  strings.TrimSpace(r.FormValue("password")),
+		}
 	} else {
 		r.Body = http.MaxBytesReader(w, r.Body, MaxUploadSize)
 		bodyBytes, err := io.ReadAll(r.Body)
@@ -400,9 +462,15 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 		size = int64(len(bodyBytes))
 		mimeType = "text/plain"
+
+		fileOpts = db.FileOptions{
+			ExpiresAt: parseTTLDuration(r.Header.Get("X-TTL")),
+			IsBurn:    r.Header.Get("X-Burn") == "1" || r.Header.Get("X-Burn") == "true",
+			Password:  strings.TrimSpace(r.Header.Get("X-Password")),
+		}
 	}
 
-	dbFile, err := db.CreateFile(user.ID, filename, originalName, size, mimeType)
+	dbFile, err := db.CreateFileWithOpts(user.ID, filename, originalName, size, mimeType, fileOpts)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

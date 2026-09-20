@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"bingo/db"
 	"bingo/handlers"
+	"bingo/mcp"
 	"bingo/middleware"
 )
 
@@ -41,14 +43,57 @@ func main() {
 	}
 	defer db.DB.Close()
 
+	// 3.1 Check for MCP CLI mode: 'bingo mcp --api-key=...'
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		apiKey := ""
+		for i, arg := range os.Args {
+			if strings.HasPrefix(arg, "--api-key=") {
+				apiKey = strings.TrimPrefix(arg, "--api-key=")
+			} else if arg == "--api-key" && i+1 < len(os.Args) {
+				apiKey = os.Args[i+1]
+			}
+		}
+		if apiKey == "" {
+			apiKey = os.Getenv("BINGO_API_KEY")
+		}
+
+		if apiKey == "" {
+			fmt.Fprintln(os.Stderr, "Error: Missing API key. Provide via --api-key=<key> or BINGO_API_KEY environment variable.")
+			os.Exit(1)
+		}
+
+		user, err := db.GetUserByAPIKey(apiKey)
+		if err != nil || user == nil {
+			fmt.Fprintf(os.Stderr, "Error: Invalid API key: %v\n", err)
+			os.Exit(1)
+		}
+
+		baseURL := os.Getenv("BINGO_BASE_URL")
+		if baseURL == "" {
+			baseURL = "http://localhost:" + port
+		}
+
+		mcp.HandleStdio(user, baseURL, "uploads")
+		return
+	}
+
 	// 4. Initialize HTML templates
 	if err := handlers.InitTemplates("templates"); err != nil {
 		log.Fatalf("Failed to initialize templates: %v", err)
 	}
 
-	// 5. Start background memory cleanups
+	// 5. Start background memory and TTL cleanups
 	middleware.CleanupSessions()
 	middleware.CleanUpLimiters()
+
+	// 5.1 Start background TTL file cleanup (runs every 1 minute)
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			_, _ = db.DeleteExpiredFiles("uploads")
+		}
+	}()
 
 	// 6. Router Setup (Go 1.22+ Standard Mux Routing)
 	mux := http.NewServeMux()
@@ -66,9 +111,16 @@ func main() {
 	mux.HandleFunc("POST /login", handlers.ProcessLogin)
 	mux.HandleFunc("GET /logout", handlers.ProcessLogout)
 
-	// Developer / API Specs
+	// Developer / API Specs & MCP Endpoints
 	mux.HandleFunc("GET /api", handlers.ShowAPIDocs)
 	mux.Handle("POST /api/upload", middleware.RateLimit(http.HandlerFunc(handlers.APIUploadHandler)))
+
+	// Model Context Protocol (MCP) Endpoints (universal HTTP SSE & direct JSON-RPC)
+	mux.HandleFunc("GET /mcp", handlers.MCPHandler)
+	mux.HandleFunc("POST /mcp", handlers.MCPHandler)
+	mux.HandleFunc("POST /mcp/messages", handlers.MCPHandler)
+	mux.HandleFunc("OPTIONS /mcp", handlers.MCPHandler)
+	mux.HandleFunc("OPTIONS /mcp/messages", handlers.MCPHandler)
 
 	// User Workspace & Dashboard Actions
 	mux.Handle("GET /dashboard", middleware.RequireAuth(http.HandlerFunc(handlers.ShowDashboard)))

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -80,14 +81,42 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
 
 	csrfToken := middleware.GetCsrfToken(r)
 
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	baseURL := fmt.Sprintf("%s://%s", scheme, r.Host)
+	mcpURL := fmt.Sprintf("%s/mcp?api_key=%s", baseURL, user.APIKey)
+
+	claudeConfig := fmt.Sprintf(`{
+  "mcpServers": {
+    "bingo": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "%s"]
+    }
+  }
+}`, mcpURL)
+
+	cursorConfig := fmt.Sprintf(`{
+  "mcpServers": {
+    "bingo": {
+      "url": "%s"
+    }
+  }
+}`, mcpURL)
+
 	data := map[string]interface{}{
-		"Title":      "Bingo - Yönetim Paneli",
-		"User":       user,
-		"Files":      uiFiles,
-		"TotalFiles": totalFiles,
-		"TotalSize":  PrettySize(totalSize),
-		"TotalViews": totalViews,
-		"CsrfToken":  csrfToken, // CSRF token injection
+		"Title":        "Bingo - Çalışma Alanı",
+		"User":         user,
+		"Files":        uiFiles,
+		"TotalFiles":   totalFiles,
+		"TotalSize":    PrettySize(totalSize),
+		"TotalViews":   totalViews,
+		"CsrfToken":    csrfToken,
+		"BaseURL":      baseURL,
+		"MCPURL":       mcpURL,
+		"ClaudeConfig": claudeConfig,
+		"CursorConfig": cursorConfig,
 	}
 
 	if user.Role == "super_admin" {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"bingo/db"
 )
@@ -90,6 +91,72 @@ func ServeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Check TTL Expiration
+	if fileMeta.ExpiresAt != nil && time.Now().After(*fileMeta.ExpiresAt) {
+		_ = os.Remove(targetPath)
+		_ = db.DeleteFile(fileMeta.ID)
+		http.Error(w, "Bu paylaşımın süresi dolmuştur (Expired)", http.StatusGone)
+		return
+	}
+
+	// 2. Check Password Protection
+	if fileMeta.HasPassword {
+		authenticated := false
+		enteredPass := r.URL.Query().Get("pass")
+		if enteredPass == "" && r.Method == http.MethodPost {
+			enteredPass = r.FormValue("password")
+		}
+
+		cookieName := fmt.Sprintf("bg_auth_%d", fileMeta.ID)
+		if enteredPass == "" {
+			if c, err := r.Cookie(cookieName); err == nil && c.Value == "unlocked" {
+				authenticated = true
+			}
+		} else {
+			valid, _ := db.CheckFilePassword(fileMeta.ID, enteredPass)
+			if valid {
+				authenticated = true
+				http.SetCookie(w, &http.Cookie{
+					Name:     cookieName,
+					Value:    "unlocked",
+					Path:     r.URL.Path,
+					MaxAge:   3600,
+					HttpOnly: true,
+					SameSite: http.SameSiteLaxMode,
+				})
+			}
+		}
+
+		if !authenticated {
+			if r.URL.Query().Get("raw") == "true" {
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Write([]byte("401 Unauthorized: Parola korumalı paylaşım (Password required)"))
+				return
+			}
+
+			RenderTemplate(w, "viewer.html", map[string]interface{}{
+				"Title":        "Parola Korumalı Paylaşım",
+				"Filename":     fileMeta.Filename,
+				"OriginalName": fileMeta.OriginalName,
+				"Username":     fileMeta.Username,
+				"FileSize":     PrettySize(fileMeta.FileSize),
+				"CreatedAt":    fileMeta.CreatedAt.Format("02.01.2006 15:04"),
+				"IsLocked":     true,
+				"WrongPass":    enteredPass != "",
+			})
+			return
+		}
+	}
+
+	// 3. Burn After Reading: Destroy immediately after serving
+	if fileMeta.IsBurn {
+		defer func(id int64, path string) {
+			_ = os.Remove(path)
+			_ = db.DeleteFile(id)
+		}(fileMeta.ID, targetPath)
+	}
+
 	// Increment view count asynchronously
 	go func(id int64) {
 		_ = db.IncrementFileViews(id)
@@ -97,23 +164,49 @@ func ServeFile(w http.ResponseWriter, r *http.Request) {
 
 	ext := strings.ToLower(filepath.Ext(filename))
 
-	// 1. JSON served raw directly
-	if ext == ".json" {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		http.ServeFile(w, r, targetPath)
-		return
+	// Code & text file detection for syntax viewer
+	codeExtensions := map[string]string{
+		".go":   "go",
+		".py":   "python",
+		".js":   "javascript",
+		".ts":   "typescript",
+		".jsx":  "javascript",
+		".tsx":  "typescript",
+		".rs":   "rust",
+		".c":    "c",
+		".cpp":  "cpp",
+		".h":    "c",
+		".java": "java",
+		".html": "html",
+		".css":  "css",
+		".sh":   "bash",
+		".bash": "bash",
+		".sql":  "sql",
+		".yaml": "yaml",
+		".yml":  "yaml",
+		".xml":  "xml",
+		".csv":  "text",
+		".log":  "text",
+		".env":  "bash",
+		".ini":  "ini",
+		".conf": "text",
+		".txt":  "text",
+		".md":   "markdown",
+		".json": "json",
 	}
 
-	// 2. Text and Markdown formats
-	if ext == ".md" || ext == ".txt" {
-		// If raw parameter is set, serve raw content
+	// Text / Code / Markdown Viewer
+	if lang, isCode := codeExtensions[ext]; isCode {
 		if r.URL.Query().Get("raw") == "true" {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			if ext == ".json" {
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			} else {
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			}
 			http.ServeFile(w, r, targetPath)
 			return
 		}
 
-		// Read content for the viewer
 		contentBytes, err := os.ReadFile(targetPath)
 		if err != nil {
 			http.Error(w, "Failed to read file", http.StatusInternalServerError)
@@ -130,11 +223,15 @@ func ServeFile(w http.ResponseWriter, r *http.Request) {
 			"CreatedAt":    fileMeta.CreatedAt.Format("02.01.2006 15:04"),
 			"Content":      string(contentBytes),
 			"IsMarkdown":   ext == ".md",
+			"Language":     lang,
+			"IsBurn":       fileMeta.IsBurn,
+			"ExpiresAt":    fileMeta.ExpiresAt,
+			"HasPassword":  fileMeta.HasPassword,
 		})
 		return
 	}
 
-	// 3. Safe Images served directly inline
+	// Safe Images served directly inline
 	safeImages := map[string]bool{
 		".png":  true,
 		".jpg":  true,
@@ -148,7 +245,7 @@ func ServeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Unsafe file types are forced to download (Stored XSS mitigation)
+	// Unsafe or binary file types are forced to download
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileMeta.OriginalName))
 	http.ServeFile(w, r, targetPath)
 }

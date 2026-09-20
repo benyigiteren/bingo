@@ -1,27 +1,31 @@
 {{ define "content" }}
-<div class="auth-panel">
-  <div class="auth-header">
-    <h1>Giriş Yap</h1>
-    <p class="form-label" style="font-weight: normal; margin-top: 4px;">Bingo dosya paylaşım çalışma alanınıza erişin.</p>
+<div style="max-width: 400px; margin: 40px auto;">
+  <div style="text-align: center; margin-bottom: 24px;">
+    <h1 style="font-size: 24px; font-weight: 700; color: #fff; letter-spacing: -0.02em;">Giriş Yap</h1>
+    <p style="font-size: 13.5px; color: var(--text-secondary); margin-top: 4px;">Bingo çalışma alanınıza ve kasanıza erişin.</p>
   </div>
 
-  <div class="card">
+  <div class="card" style="padding: 28px;">
     {{ if .Error }}
-      <div class="alert alert-danger">{{ .Error }}</div>
+      <div style="background: var(--accent-danger-bg); border: 1px solid var(--accent-danger); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 18px; font-size: 13px; color: var(--accent-danger);">
+        {{ .Error }}
+      </div>
     {{ end }}
 
     <form action="/login" method="POST">
       <div class="form-group">
         <label for="username" class="form-label">Kullanıcı Adı</label>
-        <input type="text" id="username" name="username" class="form-input" required autofocus>
+        <input type="text" id="username" name="username" class="form-input" required autofocus style="height: 40px;">
       </div>
 
       <div class="form-group">
-        <label for="password" class="form-label">Şifre</label>
-        <input type="password" id="password" name="password" class="form-input" required>
+        <label for="password" class="form-label">Parola</label>
+        <input type="password" id="password" name="password" class="form-input" required style="height: 40px;">
       </div>
 
-      <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Giriş Yap</button>
+      <button type="submit" class="btn btn-primary" style="width: 100%; height: 42px; font-weight: 600; margin-top: 8px;">
+        Giriş Yap
+      </button>
     </form>
   </div>
 </div>
