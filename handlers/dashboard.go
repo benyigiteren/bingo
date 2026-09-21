@@ -34,7 +34,7 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
 	if user.Role == "super_admin" {
 		stats, err := db.GetStats()
 		if err != nil {
-			http.Error(w, "İstatistikler getirilirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "İstatistikler getirilirken hata oluştu.", http.StatusInternalServerError)
 			return
 		}
 		totalFiles = stats.TotalFiles
@@ -43,13 +43,13 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
 
 		usersList, err = db.GetUsers()
 		if err != nil {
-			http.Error(w, "Kullanıcı listesi getirilirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Kullanıcı listesi getirilirken hata oluştu.", http.StatusInternalServerError)
 			return
 		}
 
 		filesList, err = db.GetAllFiles(100, 0)
 		if err != nil {
-			http.Error(w, "Tüm dosyalar getirilirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Tüm dosyalar getirilirken hata oluştu.", http.StatusInternalServerError)
 			return
 		}
 	} else {
@@ -58,13 +58,13 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
 			user.ID,
 		).Scan(&totalFiles, &totalSize, &totalViews)
 		if err != nil {
-			http.Error(w, "Kişisel istatistikler getirilirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Kişisel istatistikler getirilirken hata oluştu.", http.StatusInternalServerError)
 			return
 		}
 
 		filesList, err = db.GetFiles(user.ID, 100, 0)
 		if err != nil {
-			http.Error(w, "Dosyalarınız getirilirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Dosyalarınız getirilirken hata oluştu.", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -144,11 +144,8 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
 
 	csrfToken := middleware.GetCsrfToken(r)
 
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	baseURL := fmt.Sprintf("%s://%s", scheme, r.Host)
+	// Host header is validated (injection-safe) inside BaseURL.
+	baseURL := BaseURL(r)
 	mcpURL := fmt.Sprintf("%s/mcp?api_key=%s", baseURL, user.APIKey)
 
 	claudeConfig := fmt.Sprintf(`{
@@ -180,20 +177,20 @@ func ShowDashboard(w http.ResponseWriter, r *http.Request) {
 }`, user.APIKey)
 
 	data := map[string]interface{}{
-		"Title":         "Çalışma Alanı",
-		"User":          user,
-		"Files":         uiFiles,
-		"TotalFiles":    totalFiles,
-		"TotalSize":     PrettySize(totalSize),
-		"TotalViews":    totalViews,
-		"MaxUploadMB":   GetMaxUploadSizeMB(),
-		"CsrfToken":     csrfToken,
-		"BaseURL":       baseURL,
-		"MCPURL":        mcpURL,
-		"ClaudeConfig":  claudeConfig,
-		"CursorConfig":  cursorConfig,
-		"GeminiCliCmd":  geminiCliCmd,
-		"StdioConfig":   stdioConfig,
+		"Title":        "Çalışma Alanı",
+		"User":         user,
+		"Files":        uiFiles,
+		"TotalFiles":   totalFiles,
+		"TotalSize":    PrettySize(totalSize),
+		"TotalViews":   totalViews,
+		"MaxUploadMB":  GetMaxUploadSizeMB(),
+		"CsrfToken":    csrfToken,
+		"BaseURL":      baseURL,
+		"MCPURL":       mcpURL,
+		"ClaudeConfig": claudeConfig,
+		"CursorConfig": cursorConfig,
+		"GeminiCliCmd": geminiCliCmd,
+		"StdioConfig":  stdioConfig,
 	}
 
 	if user.Role == "super_admin" {
@@ -220,8 +217,12 @@ func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	username := strings.ToLower(strings.TrimSpace(r.FormValue("username")))
 	password := r.FormValue("password")
 
-	if username == "" || len(password) < 6 {
-		http.Error(w, "Geçersiz kullanıcı adı veya şifre (en az 6 karakter)", http.StatusBadRequest)
+	if msg := ValidateUsername(username); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	if len(password) < 6 || len(password) > 128 {
+		http.Error(w, "Şifre en az 6, en fazla 128 karakter olmalıdır.", http.StatusBadRequest)
 		return
 	}
 
@@ -237,7 +238,7 @@ func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = db.CreateUser(username, password, "user")
 	if err != nil {
-		http.Error(w, "Kullanıcı oluşturulurken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Kullanıcı oluşturulurken hata oluştu.", http.StatusInternalServerError)
 		return
 	}
 
@@ -281,7 +282,7 @@ func ToggleUserStatusHandler(w http.ResponseWriter, r *http.Request) {
 	newStatus := !targetUser.IsActive
 	err = db.ToggleUserStatus(targetUserID, newStatus)
 	if err != nil {
-		http.Error(w, "Hesap durumu güncellenirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Hesap durumu güncellenirken hata oluştu.", http.StatusInternalServerError)
 		return
 	}
 
@@ -319,8 +320,12 @@ func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDir := filepath.Join("uploads", targetUser.Username)
-	_ = os.RemoveAll(userDir)
+	// Only remove directories for safe usernames; a legacy unsafe name must
+	// never cause deletion outside uploads/.
+	if safeUserDirName(targetUser.Username) {
+		userDir := filepath.Join("uploads", targetUser.Username)
+		_ = os.RemoveAll(userDir)
+	}
 
 	err = db.DeleteUser(targetUserID)
 	if err != nil {
@@ -414,7 +419,7 @@ func DeleteFileHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = db.DeleteFile(fileID)
 	if err != nil {
-		http.Error(w, "Dosya kaydı silinirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Dosya kaydı silinirken hata oluştu.", http.StatusInternalServerError)
 		return
 	}
 
@@ -436,13 +441,13 @@ func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	maxMBStr := strings.TrimSpace(r.FormValue("max_upload_size_mb"))
 	maxMB, err := strconv.Atoi(maxMBStr)
-	if err != nil || maxMB <= 0 || maxMB > 10240 {
-		http.Error(w, "Geçersiz dosya boyutu sınırı (1 MB - 10240 MB arası olmalıdır)", http.StatusBadRequest)
+	if err != nil || maxMB <= 0 || maxMB > 2048 {
+		http.Error(w, "Geçersiz dosya boyutu sınırı (1 MB - 2048 MB arası olmalıdır)", http.StatusBadRequest)
 		return
 	}
 
 	if err := db.SetSetting("max_upload_size_mb", strconv.Itoa(maxMB)); err != nil {
-		http.Error(w, "Ayar kaydedilemedi: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Ayar kaydedilemedi.", http.StatusInternalServerError)
 		return
 	}
 
@@ -502,8 +507,8 @@ func ChangeSelfPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(newPassword) < 6 {
-		sendResponse(false, "Yeni şifre en az 6 karakter olmalıdır.", http.StatusBadRequest)
+	if len(newPassword) < 6 || len(newPassword) > 128 {
+		sendResponse(false, "Yeni şifre en az 6, en fazla 128 karakter olmalıdır.", http.StatusBadRequest)
 		return
 	}
 
@@ -519,9 +524,13 @@ func ChangeSelfPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.UpdateUserPassword(user.ID, string(newHash)); err != nil {
-		sendResponse(false, "Şifre güncellenirken hata oluştu: "+err.Error(), http.StatusInternalServerError)
+		sendResponse(false, "Şifre güncellenirken hata oluştu.", http.StatusInternalServerError)
 		return
 	}
+
+	// Invalidate all other sessions so a stolen session stops working; keep
+	// the current one so the user is not logged out by their own change.
+	middleware.InvalidateUserSessionsExcept(user.ID, middleware.SessionTokenFromRequest(r))
 
 	sendResponse(true, "Şifreniz başarıyla değiştirildi.", http.StatusOK)
 }

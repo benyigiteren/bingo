@@ -76,6 +76,10 @@ func InitDB(dbPath string) error {
 		return fmt.Errorf("failed to configure sqlite: %w", err)
 	}
 
+	// Restrict DB file permissions: it stores password hashes and API keys.
+	// Best effort (e.g. no-op on some Windows setups); never fail startup.
+	_ = os.Chmod(dbPath, 0600)
+
 	// Create tables
 	err = createTables()
 	if err != nil {
@@ -539,9 +543,18 @@ func GetAllFiles(limit, offset int) ([]File, error) {
 	return files, nil
 }
 
+// escapeLike escapes SQL LIKE wildcards so a search query is matched
+// literally (% and _ typed by users must not act as wildcards).
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
+}
+
 // SearchFiles searches files by filename or original name
 func SearchFiles(userID int64, isAdmin bool, query string, limit int) ([]File, error) {
-	pattern := "%" + strings.TrimSpace(query) + "%"
+	pattern := "%" + escapeLike(strings.TrimSpace(query)) + "%"
 	var rows *sql.Rows
 	var err error
 
@@ -550,7 +563,7 @@ func SearchFiles(userID int64, isAdmin bool, query string, limit int) ([]File, e
 			SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
 			FROM files f
 			JOIN users u ON f.user_id = u.id
-			WHERE f.filename LIKE ? OR f.original_name LIKE ?
+			WHERE f.filename LIKE ? ESCAPE '\\' OR f.original_name LIKE ? ESCAPE '\\'
 			ORDER BY f.created_at DESC
 			LIMIT ?`,
 			pattern, pattern, limit,
@@ -560,7 +573,7 @@ func SearchFiles(userID int64, isAdmin bool, query string, limit int) ([]File, e
 			SELECT f.id, f.user_id, u.username, f.filename, f.original_name, f.file_size, f.mime_type, f.views, f.expires_at, f.is_burn, f.password_hash, f.created_at
 			FROM files f
 			JOIN users u ON f.user_id = u.id
-			WHERE f.user_id = ? AND (f.filename LIKE ? OR f.original_name LIKE ?)
+			WHERE f.user_id = ? AND (f.filename LIKE ? ESCAPE '\\' OR f.original_name LIKE ? ESCAPE '\\')
 			ORDER BY f.created_at DESC
 			LIMIT ?`,
 			userID, pattern, pattern, limit,

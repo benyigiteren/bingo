@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -23,11 +22,8 @@ func MCPDiscoveryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	baseURL := fmt.Sprintf("%s://%s", scheme, r.Host)
+	// Host header is validated (injection-safe) inside BaseURL.
+	baseURL := BaseURL(r)
 
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"name":            "bingo",
@@ -92,26 +88,30 @@ func MCPHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Extract API Key from Headers or Query params
 	if user == nil {
-		apiKey := r.Header.Get("X-API-Key")
+		apiKey := strings.TrimSpace(r.Header.Get("X-API-Key"))
 		if apiKey == "" {
-			apiKey = r.Header.Get("x-api-key")
+			apiKey = strings.TrimSpace(r.Header.Get("x-api-key"))
 		}
 		if apiKey == "" {
 			authHeader := r.Header.Get("Authorization")
 			if strings.HasPrefix(authHeader, "Bearer ") {
-				apiKey = strings.TrimPrefix(authHeader, "Bearer ")
+				apiKey = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 			} else if strings.HasPrefix(authHeader, "bearer ") {
-				apiKey = strings.TrimPrefix(authHeader, "bearer ")
+				apiKey = strings.TrimSpace(strings.TrimPrefix(authHeader, "bearer "))
 			}
 		}
 		if apiKey == "" {
-			apiKey = r.URL.Query().Get("api_key")
+			apiKey = strings.TrimSpace(r.URL.Query().Get("api_key"))
 		}
 		if apiKey == "" {
-			apiKey = r.URL.Query().Get("apiKey")
+			apiKey = strings.TrimSpace(r.URL.Query().Get("apiKey"))
 		}
 		if apiKey == "" {
-			apiKey = r.URL.Query().Get("key")
+			apiKey = strings.TrimSpace(r.URL.Query().Get("key"))
+		}
+		// Bound key length before DB lookup (DoS protection on huge inputs).
+		if len(apiKey) > 256 {
+			apiKey = apiKey[:256]
 		}
 
 		if apiKey != "" {
@@ -189,12 +189,8 @@ func MCPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Resolve base URL for live share links
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	baseURL := fmt.Sprintf("%s://%s", scheme, r.Host)
+	// 4. Resolve base URL for live share links (host validated)
+	baseURL := BaseURL(r)
 
 	// 5. Dispatch to MCP Transport
 	mcp.HandleHTTP(w, r, user, baseURL, "uploads")

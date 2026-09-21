@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -33,7 +34,60 @@ func GetMaxUploadSize() int64 {
 var (
 	// Güvenli dosya adı kontrolü
 	safeFilenameRegex = regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`)
+
+	// maxOriginalNameLen bounds the display/original name stored in DB and
+	// reflected in HTML + Content-Disposition headers.
+	maxOriginalNameLen = 255
+	// maxFilePasswordLen bounds bcrypt input for file passwords.
+	maxFilePasswordLen = 128
+	// maxInlineViewerBytes caps how much content is read into memory for the
+	// HTML code viewer; larger files are forced to download.
+	maxInlineViewerBytes = int64(5 * 1024 * 1024)
 )
+
+// sanitizeOriginalName cleans a user-supplied display name: strips path,
+// control characters and CRLF (header-injection defense), truncates to 255.
+func sanitizeOriginalName(name string) string {
+	name = strings.TrimSpace(name)
+	name = filepath.Base(name)
+	name = strings.ReplaceAll(name, "\r", "")
+	name = strings.ReplaceAll(name, "\n", "")
+	var sb strings.Builder
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			continue
+		}
+		sb.WriteRune(r)
+	}
+	res := strings.TrimSpace(sb.String())
+	if res == "" || res == "." || res == ".." {
+		res = "dosya_" + fmt.Sprintf("%d", time.Now().Unix())
+	}
+	if len(res) > maxOriginalNameLen {
+		ext := filepath.Ext(res)
+		if len(ext) > 20 {
+			ext = ext[:20]
+		}
+		base := res[:maxOriginalNameLen-len(ext)]
+		res = base + ext
+	}
+	return res
+}
+
+// safeUserDirName reports whether a username is safe to embed in a filesystem
+// path (defense for legacy DB rows created before strict validation).
+func safeUserDirName(username string) bool {
+	if username == "" || len(username) > 32 {
+		return false
+	}
+	if username != filepath.Clean(username) {
+		return false
+	}
+	if strings.Contains(username, "..") || strings.ContainsAny(username, `/\`) {
+		return false
+	}
+	return true
+}
 
 // Dosya adını temizleme yardımcısı
 func sanitizeFilename(name string) string {
@@ -56,6 +110,9 @@ func sanitizeFilename(name string) string {
 
 // Çakışmayan benzersiz dosya adı bulma yardımcısı
 func getUniqueFilename(userID int64, username, originalName string) string {
+	if len(originalName) > maxOriginalNameLen {
+		originalName = originalName[:maxOriginalNameLen]
+	}
 	ext := filepath.Ext(originalName)
 	base := originalName[:len(originalName)-len(ext)]
 	base = sanitizeFilename(base)
@@ -63,6 +120,9 @@ func getUniqueFilename(userID int64, username, originalName string) string {
 		base = "dosya"
 	}
 	ext = sanitizeFilename(ext)
+	if len(ext) > 20 {
+		ext = ext[:20]
+	}
 
 	filename := base + ext
 	counter := 1
@@ -74,22 +134,30 @@ func getUniqueFilename(userID int64, username, originalName string) string {
 		}
 		filename = fmt.Sprintf("%s_%d%s", base, counter, ext)
 		counter++
+		if counter > 10000 {
+			// Extremely unlikely; fall back to timestamp to avoid infinite loop.
+			filename = fmt.Sprintf("%s_%d%s", base, time.Now().UnixNano(), ext)
+			break
+		}
 	}
 	return filename
 }
 
 // API İsteğini Doğrulama Yardımcısı
 func authenticateAPIRequest(r *http.Request) (*db.User, error) {
-	apiKey := r.Header.Get("X-API-Key")
+	apiKey := strings.TrimSpace(r.Header.Get("X-API-Key"))
 	if apiKey == "" {
 		authHeader := r.Header.Get("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
-			apiKey = strings.TrimPrefix(authHeader, "Bearer ")
+			apiKey = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 		}
 	}
 
 	if apiKey == "" {
 		return nil, fmt.Errorf("API anahtarı eksik (missing API key)")
+	}
+	if len(apiKey) > 256 {
+		return nil, fmt.Errorf("geçersiz API anahtarı (invalid API key)")
 	}
 
 	user, err := db.GetUserByAPIKey(apiKey)
@@ -120,6 +188,12 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"success": false, "error": "Yetkisiz işlem (Unauthorized)"}`))
+		return
+	}
+	if !safeUserDirName(user.Username) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"success": false, "error": "Hesap adı geçersiz, yönetici ile iletişime geçin"}`))
 		return
 	}
 
@@ -158,6 +232,7 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		chosenName = custom
 	}
+	chosenName = sanitizeOriginalName(chosenName)
 
 	filename := getUniqueFilename(user.ID, user.Username, chosenName)
 	targetPath := filepath.Join(userDir, filename)
@@ -195,6 +270,12 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 	expiresAt := parseTTLDuration(ttlStr)
 	isBurn := r.FormValue("is_burn") == "1" || r.FormValue("is_burn") == "true"
 	password := strings.TrimSpace(r.FormValue("password"))
+	if len(password) > maxFilePasswordLen {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"success": false, "error": "Şifre çok uzun (en fazla 128 karakter)"}`))
+		return
+	}
 
 	dbFile, err := db.CreateFileWithOpts(user.ID, filename, chosenName, written, mimeType, db.FileOptions{
 		ExpiresAt: expiresAt,
@@ -202,9 +283,10 @@ func WebUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Password:  password,
 	})
 	if err != nil {
+		log.Printf("WebUploadHandler DB error user=%d file=%s: %v", user.ID, filename, err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"success": false, "error": "Veritabanı hatası: ` + err.Error() + `"}`))
+		w.Write([]byte(`{"success": false, "error": "Veritabanı hatası, lütfen tekrar deneyin"}`))
 		return
 	}
 
@@ -230,12 +312,28 @@ func CreateTextHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
+	if !safeUserDirName(user.Username) {
+		http.Error(w, "Hesap adı geçersiz, yönetici ile iletişime geçin", http.StatusForbidden)
+		return
+	}
+
+	maxUploadSize := GetMaxUploadSize()
+	// Bound form memory/CPU for text pastes (DoS protection).
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize+1024*1024)
 
 	filename := strings.TrimSpace(r.FormValue("filename"))
 	content := r.FormValue("content")
 
 	if filename == "" || content == "" {
 		http.Error(w, "Dosya adı veya metin içeriği boş olamaz.", http.StatusBadRequest)
+		return
+	}
+	if int64(len(content)) > maxUploadSize {
+		http.Error(w, fmt.Sprintf("Metin içeriği %d MB sınırını aşıyor", GetMaxUploadSizeMB()), http.StatusRequestEntityTooLarge)
+		return
+	}
+	if len(filename) > maxOriginalNameLen {
+		http.Error(w, "Dosya adı çok uzun (en fazla 255 karakter).", http.StatusBadRequest)
 		return
 	}
 
@@ -251,7 +349,7 @@ func CreateTextHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Dosya adını sanitize et
-	filename = sanitizeFilename(filename)
+	filename = sanitizeOriginalName(filename)
 	userDir := filepath.Join("uploads", user.Username)
 	if err := os.MkdirAll(userDir, 0755); err != nil {
 		http.Error(w, "Dizin oluşturulamadı", http.StatusInternalServerError)
@@ -280,6 +378,10 @@ func CreateTextHandler(w http.ResponseWriter, r *http.Request) {
 	expiresAt := parseTTLDuration(ttlStr)
 	isBurn := r.FormValue("is_burn") == "1" || r.FormValue("is_burn") == "true"
 	password := strings.TrimSpace(r.FormValue("password"))
+	if len(password) > maxFilePasswordLen {
+		http.Error(w, "Şifre çok uzun (en fazla 128 karakter).", http.StatusBadRequest)
+		return
+	}
 
 	_, err = db.CreateFileWithOpts(user.ID, filename, filename, int64(len([]byte(content))), mimeType, db.FileOptions{
 		ExpiresAt: expiresAt,
@@ -287,7 +389,8 @@ func CreateTextHandler(w http.ResponseWriter, r *http.Request) {
 		Password:  password,
 	})
 	if err != nil {
-		http.Error(w, "Veritabanı hatası: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("CreateTextHandler DB error user=%d file=%s: %v", user.ID, filename, err)
+		http.Error(w, "Veritabanı hatası, lütfen tekrar deneyin", http.StatusInternalServerError)
 		return
 	}
 
@@ -295,20 +398,23 @@ func CreateTextHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type APIUploadResponse struct {
-	Success   bool    `json:"success"`
-	Filename  string  `json:"filename"`
-	URL       string  `json:"url"`
-	Size      int64   `json:"size"`
-	MimeType  string  `json:"mime_type"`
-	Views     int     `json:"views"`
-	CreatedAt string  `json:"created_at"`
-	Error     string  `json:"error,omitempty"`
+	Success   bool   `json:"success"`
+	Filename  string `json:"filename"`
+	URL       string `json:"url"`
+	Size      int64  `json:"size"`
+	MimeType  string `json:"mime_type"`
+	Views     int    `json:"views"`
+	CreatedAt string `json:"created_at"`
+	Error     string `json:"error,omitempty"`
 }
 
 func parseTTLDuration(ttlStr string) *time.Time {
 	if ttlStr == "" || ttlStr == "forever" {
 		return nil
 	}
+	// Absolute upper bound: 30 days. Prevents abuse via huge custom durations
+	// like "100000h" that would pin storage effectively forever.
+	const maxTTL = 30 * 24 * time.Hour
 	var d time.Duration
 	switch strings.ToLower(ttlStr) {
 	case "10m":
@@ -328,6 +434,9 @@ func parseTTLDuration(ttlStr string) *time.Time {
 		} else {
 			return nil
 		}
+	}
+	if d > maxTTL {
+		d = maxTTL
 	}
 	exp := time.Now().Add(d)
 	return &exp
@@ -357,6 +466,12 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: err.Error()})
 		return
 	}
+	if !safeUserDirName(user.Username) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: "Hesap adı geçersiz"})
+		return
+	}
 
 	userDir := filepath.Join("uploads", user.Username)
 	if err := os.MkdirAll(userDir, 0755); err != nil {
@@ -375,6 +490,9 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var fileOpts db.FileOptions
 
 	if strings.HasPrefix(contentType, "application/json") {
+		maxUploadSize := GetMaxUploadSize()
+		// Bound JSON body (DoS protection: previously unlimited).
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize+1024*1024)
 		var req JSONUploadRequest
 		err := json.NewDecoder(r.Body).Decode(&req)
 		if err != nil {
@@ -390,9 +508,21 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: "Metin içeriği boş"})
 			return
 		}
+		if int64(len(req.Text)) > maxUploadSize {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: fmt.Sprintf("Metin içeriği %d MB sınırını aşıyor", GetMaxUploadSizeMB())})
+			return
+		}
+		if len(req.Password) > maxFilePasswordLen {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: "Şifre çok uzun (en fazla 128 karakter)"})
+			return
+		}
 
-		originalName = req.Filename
-		if originalName == "" {
+		originalName = sanitizeOriginalName(req.Filename)
+		if strings.TrimSpace(req.Filename) == "" {
 			originalName = "metin_" + fmt.Sprintf("%d", time.Now().Unix()) + ".txt"
 		}
 
@@ -451,6 +581,7 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			originalName = custom
 		}
+		originalName = sanitizeOriginalName(originalName)
 
 		filename = getUniqueFilename(user.ID, user.Username, originalName)
 		targetPath := filepath.Join(userDir, filename)
@@ -488,6 +619,12 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt: parseTTLDuration(r.FormValue("ttl")),
 			IsBurn:    r.FormValue("is_burn") == "1" || r.FormValue("is_burn") == "true",
 			Password:  strings.TrimSpace(r.FormValue("password")),
+		}
+		if len(fileOpts.Password) > maxFilePasswordLen {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: "Şifre çok uzun (en fazla 128 karakter)"})
+			return
 		}
 	} else {
 		maxUploadSize := GetMaxUploadSize()
@@ -527,24 +664,27 @@ func APIUploadHandler(w http.ResponseWriter, r *http.Request) {
 			IsBurn:    r.Header.Get("X-Burn") == "1" || r.Header.Get("X-Burn") == "true",
 			Password:  strings.TrimSpace(r.Header.Get("X-Password")),
 		}
+		if len(fileOpts.Password) > maxFilePasswordLen {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: "Şifre çok uzun (en fazla 128 karakter)"})
+			return
+		}
 	}
 
 	dbFile, err := db.CreateFileWithOpts(user.ID, filename, originalName, size, mimeType, fileOpts)
 	if err != nil {
+		log.Printf("APIUploadHandler DB error user=%d file=%s: %v", user.ID, filename, err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: "Veritabanı hatası: " + err.Error()})
+		json.NewEncoder(w).Encode(APIUploadResponse{Success: false, Error: "Veritabanı hatası, lütfen tekrar deneyin"})
 		return
 	}
 
 	publicURL := fmt.Sprintf("/%s/%s", user.Username, dbFile.Filename)
 
-	host := r.Host
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	absoluteURL := fmt.Sprintf("%s://%s%s", scheme, host, publicURL)
+	// Host header is validated (injection-safe) inside BaseURL.
+	absoluteURL := BaseURL(r) + publicURL
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

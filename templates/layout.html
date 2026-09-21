@@ -75,9 +75,12 @@
           <button type="button" class="profile-action-btn" onclick="openPasswordModal()" title="Şifre Değiştir">
             <i class="ph-light ph-gear"></i>
           </button>
-          <a href="/logout" class="profile-action-btn" title="Güvenli Çıkış">
-            <i class="ph-light ph-sign-out"></i>
-          </a>
+          <form action="/logout" method="POST" style="margin: 0; display: inline-flex;">
+            <input type="hidden" name="csrf_token" value="{{ .CsrfToken }}">
+            <button type="submit" class="profile-action-btn" title="Güvenli Çıkış">
+              <i class="ph-light ph-sign-out"></i>
+            </button>
+          </form>
         </div>
       </div>
     </aside>

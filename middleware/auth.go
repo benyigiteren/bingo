@@ -3,7 +3,9 @@ package middleware
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -15,6 +17,12 @@ type contextKey string
 
 const UserContextKey contextKey = "user"
 const SessionCookieName = "bingo_session"
+
+// FormCSRFCookieName carries the pre-authentication CSRF token for the login
+// and initial-setup forms (which have no session yet). Login/setup CSRF would
+// otherwise let an attacker plant attacker-chosen credentials (notably a fresh
+// instance's first super-admin) via an auto-submitted cross-site form.
+const FormCSRFCookieName = "bingo_form_csrf"
 
 // Simple thread-safe in-memory session store
 var (
@@ -30,13 +38,48 @@ type sessionInfo struct {
 
 func GenerateSessionToken() string {
 	bytes := make([]byte, 32)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fail closed: callers must handle empty token (no session created)
+		// rather than falling back to predictable values.
+		log.Printf("CRITICAL: crypto/rand failed for session token: %v", err)
+		return ""
+	}
 	return hex.EncodeToString(bytes)
 }
 
-func CreateSession(w http.ResponseWriter, userID int64) string {
-	token := GenerateSessionToken()
-	csrfToken := GenerateSessionToken()
+// isSecureRequest reports whether the request was received over HTTPS
+// (direct TLS or via a trusted proxy header).
+func isSecureRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	// X-Forwarded-Proto is only meaningful behind a proxy that sets it.
+	// We accept it for the Secure-cookie decision because the worst case of
+	// trusting a spoofed header here is setting Secure on plain HTTP (which
+	// just makes the cookie not sent) — fail-safe direction.
+	if r.Header.Get("X-Forwarded-Proto") == "https" {
+		return true
+	}
+	return false
+}
+
+func CreateSession(w http.ResponseWriter, r *http.Request, userID int64) string {
+	var token, csrfToken string
+	// Retry on (extremely unlikely) entropy failure; fail closed if it persists.
+	for i := 0; i < 3; i++ {
+		token = GenerateSessionToken()
+		csrfToken = GenerateSessionToken()
+		if token != "" && csrfToken != "" {
+			break
+		}
+	}
+	if token == "" || csrfToken == "" {
+		http.Error(w, "Oturum oluşturulamadı, lütfen tekrar deneyin", http.StatusInternalServerError)
+		return ""
+	}
 	expires := time.Now().Add(24 * time.Hour)
 
 	sessionMux.Lock()
@@ -53,7 +96,7 @@ func CreateSession(w http.ResponseWriter, userID int64) string {
 		Path:     "/",
 		Expires:  expires,
 		HttpOnly: true,
-		Secure:   false, // Set to true in prod with HTTPS
+		Secure:   isSecureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 
@@ -74,6 +117,99 @@ func DestroySession(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   isSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// InvalidateUserSessions removes all sessions belonging to a user.
+// Used after password change so stolen sessions stop working.
+func InvalidateUserSessions(userID int64) {
+	InvalidateUserSessionsExcept(userID, "")
+}
+
+// InvalidateUserSessionsExcept removes all sessions of a user except the one
+// holding keepToken (typically the current session, so the user is not logged
+// out by their own password change).
+func InvalidateUserSessionsExcept(userID int64, keepToken string) {
+	sessionMux.Lock()
+	defer sessionMux.Unlock()
+	for token, info := range sessions {
+		if info.UserID == userID && token != keepToken {
+			delete(sessions, token)
+		}
+	}
+}
+
+// SessionTokenFromRequest extracts the raw session cookie value, or "".
+func SessionTokenFromRequest(r *http.Request) string {
+	cookie, err := r.Cookie(SessionCookieName)
+	if err != nil {
+		return ""
+	}
+	if len(cookie.Value) > 256 {
+		return ""
+	}
+	return cookie.Value
+}
+
+// InvalidateSessionToken deletes one session by its raw token (used to rotate
+// away a pre-login session and kill fixation attempts).
+func InvalidateSessionToken(token string) {
+	if token == "" {
+		return
+	}
+	sessionMux.Lock()
+	delete(sessions, token)
+	sessionMux.Unlock()
+}
+
+// SetFormCSRF issues a short-lived pre-auth CSRF token: the token is stored in
+// a SameSite cookie and must be echoed back in the form body. Returns the token
+// to embed in the rendered form.
+func SetFormCSRF(w http.ResponseWriter, r *http.Request) string {
+	token := GenerateSessionToken()
+	if token == "" {
+		return ""
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     FormCSRFCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   600, // 10 minutes: enough to fill the form, short for replay
+		HttpOnly: true,
+		Secure:   isSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
+	return token
+}
+
+// VerifyFormCSRF constant-time compares the form token against the cookie.
+func VerifyFormCSRF(r *http.Request) bool {
+	cookie, err := r.Cookie(FormCSRFCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	actual := r.FormValue("csrf_token")
+	if actual == "" {
+		actual = r.Header.Get("X-CSRF-Token")
+	}
+	if actual == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(actual), []byte(cookie.Value)) == 1
+}
+
+// ClearFormCSRF removes the pre-auth token cookie (single-use after success).
+func ClearFormCSRF(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     FormCSRFCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   isSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -206,7 +342,11 @@ func VerifyCSRF(r *http.Request) bool {
 		actualToken = r.Header.Get("X-CSRF-Token")
 	}
 
-	return actualToken != "" && actualToken == expectedToken
+	if actualToken == "" {
+		return false
+	}
+	// Constant-time comparison to avoid leaking token prefix via timing.
+	return subtle.ConstantTimeCompare([]byte(actualToken), []byte(expectedToken)) == 1
 }
 
 // RequireCSRF middleware blocks requests that do not pass CSRF check

@@ -58,7 +58,7 @@
         <button type="button" class="btn-action" onclick="copyText(document.getElementById('raw-text-content').textContent, 'İçerik panoya kopyalandı!')">
           Kopyala
         </button>
-        <button type="button" class="btn-action" onclick="openQRModal(window.location.href, '{{ .OriginalName }}')">
+        <button type="button" class="btn-action" onclick="openQRModal(window.location.href, this.getAttribute('data-name'))" data-name="{{ .OriginalName }}">
           QR Kod
         </button>
         <a href="/{{ .Username }}/{{ .Filename }}?raw=true" class="btn-action" target="_blank">

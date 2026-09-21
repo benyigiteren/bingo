@@ -30,11 +30,22 @@ COPY --from=builder /app/bingo .
 COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/static ./static
 
+# Ensure runtime directories exist for non-volume runs.
+# NOTE: the container intentionally runs as root because named volumes are
+# created root-owned; switching to an unprivileged USER would break writes to
+# /app/data and /app/uploads on fresh deploys. Privilege containment is
+# enforced via compose security_opt (no-new-privileges).
+RUN mkdir -p /app/data /app/uploads
+
 # Volumes for persistent data and uploads
 VOLUME ["/app/data", "/app/uploads"]
 
 # Expose server port
 EXPOSE 8080
+
+# Liveness probe (uses PORT when customized, defaults to 8080)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:${PORT:-8080}/login || exit 1
 
 # Run bingo
 CMD ["./bingo"]

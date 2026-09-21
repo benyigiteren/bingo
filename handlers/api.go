@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"bingo/middleware"
@@ -42,16 +41,14 @@ func ShowAPIDocs(w http.ResponseWriter, r *http.Request) {
 	// Check if user is logged in to show appropriate navigation links
 	loggedInUser := middleware.GetLoggedUser(r)
 
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	baseURL := fmt.Sprintf("%s://%s", scheme, r.Host)
+	// Host header is validated (injection-safe) inside BaseURL.
+	baseURL := BaseURL(r)
 
 	RenderTemplate(w, "api_docs.html", map[string]interface{}{
-		"Title":   "Bingo - API Dokümantasyonu",
-		"User":    loggedInUser,
-		"BaseURL": baseURL,
+		"Title":     "Bingo - API Dokümantasyonu",
+		"User":      loggedInUser,
+		"BaseURL":   baseURL,
+		"CsrfToken": middleware.GetCsrfToken(r),
 	})
 }
 

@@ -752,3 +752,71 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 });
+
+// Güvenli mini Markdown işleyici (XSS korumalı: önce HTML kaçış, sonra sınırlı biçim).
+// viewer.html içindeki #markdown-viewer alanını doldurur. Yalnızca http/https
+// bağlantılarına izin verilir; javascript:/data: şemaları düz metin olarak kalır.
+window.renderSimpleMarkdown = function(src) {
+  if (src == null) return '';
+  var text = String(src);
+  // Çok büyük girdilerde tarayıcıyı kilitlememek için üst sınır.
+  if (text.length > 500000) text = text.slice(0, 500000);
+
+  function esc(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function inline(s) {
+    var e = esc(s);
+    e = e.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    e = e.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    e = e.replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    e = e.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"']+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return e;
+  }
+
+  var lines = text.split('\n');
+  var html = '';
+  var inFence = false;
+  var fenceBuf = [];
+  var inList = false;
+
+  function closeList() {
+    if (inList) { html += '</ul>'; inList = false; }
+  }
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (/^```/.test(line)) {
+      if (inFence) {
+        html += '<pre><code>' + esc(fenceBuf.join('\n')) + '</code></pre>';
+        fenceBuf = [];
+        inFence = false;
+      } else {
+        closeList();
+        inFence = true;
+      }
+      continue;
+    }
+    if (inFence) { fenceBuf.push(line); continue; }
+
+    var h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      closeList();
+      var lvl = h[1].length;
+      html += '<h' + lvl + '>' + inline(h[2]) + '</h' + lvl + '>';
+      continue;
+    }
+    var li = line.match(/^\s*[-*]\s+(.*)$/);
+    if (li) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += '<li>' + inline(li[1]) + '</li>';
+      continue;
+    }
+    if (/^\s*$/.test(line)) { closeList(); continue; }
+    closeList();
+    html += '<p>' + inline(line) + '</p>';
+  }
+  if (inFence) html += '<pre><code>' + esc(fenceBuf.join('\n')) + '</code></pre>';
+  closeList();
+  return html;
+};

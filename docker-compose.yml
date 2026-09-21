@@ -12,10 +12,32 @@ services:
     environment:
       - PORT=8080
       - DB_PATH=/app/data/bingo.db
+      # Set to a long random string to keep password-unlock cookies valid
+      # across restarts. Example: openssl rand -hex 32
+      # - BINGO_COOKIE_SECRET=change-me-to-a-long-random-value
+      # Set TRUST_PROXY=1 only when behind a trusted reverse proxy that
+      # sanitizes X-Forwarded-For (otherwise IP rate limits can be spoofed).
+      # - TRUST_PROXY=0
     volumes:
       - bingo_data:/app/data
       - bingo_uploads:/app/uploads
     restart: unless-stopped
+    # Prevents privilege escalation via setuid binaries; safe for this server.
+    security_opt:
+      - no-new-privileges:true
+    # Basic containment: bounded memory/CPU so one abusive workload cannot
+    # starve the host. Adjust to your instance size.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/login || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   bingo_data:

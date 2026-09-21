@@ -307,6 +307,8 @@ func parseTTL(ttlStr string) *time.Time {
 	if ttlStr == "" || ttlStr == "forever" {
 		return nil
 	}
+	// Absolute upper bound: 30 days (same as REST API).
+	const maxTTL = 30 * 24 * time.Hour
 	var d time.Duration
 	switch strings.ToLower(ttlStr) {
 	case "10m":
@@ -327,8 +329,80 @@ func parseTTL(ttlStr string) *time.Time {
 			return nil
 		}
 	}
+	if d > maxTTL {
+		d = maxTTL
+	}
 	exp := time.Now().Add(d)
 	return &exp
+}
+
+const (
+	// maxMCPPasteBytes caps inline text pastes via MCP (DoS protection).
+	maxMCPPasteBytes = 5 * 1024 * 1024
+	// maxMCPReadBytes caps how much file content is inlined into a tool
+	// response; larger files are summarized instead of dumped.
+	maxMCPReadBytes = 1024 * 1024
+	// maxMCPFilenameLen bounds filenames accepted via MCP tools.
+	maxMCPFilenameLen = 255
+	// maxMCPPasswordLen bounds file passwords via MCP (bcrypt input).
+	maxMCPPasswordLen = 128
+	// maxMCPSearchLen bounds search queries.
+	maxMCPSearchLen = 200
+)
+
+// maxMCPDecodedBytes caps base64-decoded file uploads via MCP, aligned with
+// the admin-configured upload limit (default 50 MB) plus headroom.
+func maxMCPDecodedBytes() int64 {
+	mb := 50
+	if v := getUploadLimitMB(); v > 0 {
+		mb = v
+	}
+	if mb > 10240 {
+		mb = 10240
+	}
+	return int64(mb) * 1024 * 1024
+}
+
+func getUploadLimitMB() int {
+	return db.GetSettingInt("max_upload_size_mb", 50)
+}
+
+// sanitizeMCPFilename strips path components and unsafe runes, mirroring the
+// REST upload sanitizer (kept local to avoid an import cycle with handlers).
+func sanitizeMCPFilename(name string) string {
+	name = strings.TrimSpace(name)
+	if len(name) > maxMCPFilenameLen {
+		name = name[:maxMCPFilenameLen]
+	}
+	name = filepath.Base(name)
+	name = strings.ReplaceAll(name, " ", "_")
+	var sb strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+			sb.WriteRune(r)
+		}
+	}
+	res := sb.String()
+	if res == "" || res == "." || res == ".." {
+		res = fmt.Sprintf("paste_%d.txt", time.Now().Unix())
+	}
+	return res
+}
+
+// uniqueMCPFilename avoids silently overwriting an existing file: if the name
+// is taken, a numeric suffix is appended (same UX as the web uploader).
+func uniqueMCPFilename(username, filename string) string {
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+	candidate := filename
+	for i := 1; i <= 10000; i++ {
+		existing, err := db.GetFile(username, candidate)
+		if err != nil || existing == nil {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s_%d%s", base, i, ext)
+	}
+	return fmt.Sprintf("%s_%d%s", base, time.Now().UnixNano(), ext)
 }
 
 func (s *Server) toolSharePaste(args map[string]any) CallToolResult {
@@ -336,13 +410,16 @@ func (s *Server) toolSharePaste(args map[string]any) CallToolResult {
 	if strings.TrimSpace(content) == "" {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: content cannot be empty."}}}
 	}
+	if len(content) > maxMCPPasteBytes {
+		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: fmt.Sprintf("Error: content exceeds %d MB MCP paste limit.", maxMCPPasteBytes/1024/1024)}}}
+	}
 
 	filename, _ := args["filename"].(string)
 	filename = strings.TrimSpace(filename)
 	if filename == "" {
 		filename = fmt.Sprintf("paste_%d.txt", time.Now().Unix())
 	} else {
-		filename = filepath.Base(filename)
+		filename = sanitizeMCPFilename(filename)
 	}
 
 	ttlStr, _ := args["ttl"].(string)
@@ -350,12 +427,18 @@ func (s *Server) toolSharePaste(args map[string]any) CallToolResult {
 
 	isBurn, _ := args["is_burn"].(bool)
 	password, _ := args["password"].(string)
+	if len(password) > maxMCPPasswordLen {
+		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: password exceeds 128 characters."}}}
+	}
 
 	// Ensure user directory
 	userDir := filepath.Join(s.UploadsDir, s.User.Username)
 	if err := os.MkdirAll(userDir, 0755); err != nil {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: fmt.Sprintf("Error creating user directory: %v", err)}}}
 	}
+
+	// Never overwrite an existing file; pick a unique name instead.
+	filename = uniqueMCPFilename(s.User.Username, filename)
 
 	// Write content to disk
 	targetPath := filepath.Join(userDir, filename)
@@ -400,7 +483,7 @@ func (s *Server) toolSharePaste(args map[string]any) CallToolResult {
 
 func (s *Server) toolUploadFile(args map[string]any) CallToolResult {
 	filename, _ := args["filename"].(string)
-	filename = strings.TrimSpace(filepath.Base(filename))
+	filename = sanitizeMCPFilename(filename)
 	if filename == "" || filename == "." {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: filename is required."}}}
 	}
@@ -409,10 +492,18 @@ func (s *Server) toolUploadFile(args map[string]any) CallToolResult {
 	if contentB64 == "" {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: content_base64 is required."}}}
 	}
+	// Reject absurd payloads before decoding: base64 inflates ~4/3.
+	maxB64 := maxMCPDecodedBytes() * 4 / 3
+	if int64(len(contentB64)) > maxB64 {
+		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: file exceeds the configured upload size limit."}}}
+	}
 
 	data, err := base64.StdEncoding.DecodeString(contentB64)
 	if err != nil {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: fmt.Sprintf("Invalid Base64 content: %v", err)}}}
+	}
+	if int64(len(data)) > maxMCPDecodedBytes() {
+		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: file exceeds the configured upload size limit."}}}
 	}
 
 	ttlStr, _ := args["ttl"].(string)
@@ -423,6 +514,7 @@ func (s *Server) toolUploadFile(args map[string]any) CallToolResult {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: fmt.Sprintf("Directory error: %v", err)}}}
 	}
 
+	filename = uniqueMCPFilename(s.User.Username, filename)
 	targetPath := filepath.Join(userDir, filename)
 	if err := os.WriteFile(targetPath, data, 0644); err != nil {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: fmt.Sprintf("Error writing file: %v", err)}}}
@@ -448,7 +540,7 @@ func (s *Server) toolUploadFile(args map[string]any) CallToolResult {
 
 func (s *Server) toolGetPaste(args map[string]any) CallToolResult {
 	filename, _ := args["filename"].(string)
-	filename = strings.TrimSpace(filepath.Base(filename))
+	filename = sanitizeMCPFilename(filename)
 	if filename == "" {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: filename is required."}}}
 	}
@@ -458,10 +550,21 @@ func (s *Server) toolGetPaste(args map[string]any) CallToolResult {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: fmt.Sprintf("Paste not found: %s", filename)}}}
 	}
 
+	// Cap inlined content size (DoS protection); larger files are summarized.
+	// NOTE: the caller is authenticated as the file owner, so reading own
+	// password-protected files here is legitimate (protection applies to
+	// public share links, not the owner).
+	if meta.FileSize > maxMCPReadBytes {
+		return CallToolResult{Content: []ToolContent{{Type: "text", Text: fmt.Sprintf("=== %s (Views: %d, Size: %d bytes) ===\nFile too large to inline (>1 MB). Download it from %s/%s/%s", filename, meta.Views, meta.FileSize, s.BaseURL, s.User.Username, filename)}}}
+	}
+
 	targetPath := filepath.Join(s.UploadsDir, s.User.Username, filename)
 	data, err := os.ReadFile(targetPath)
 	if err != nil {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: fmt.Sprintf("Error reading file content: %v", err)}}}
+	}
+	if len(data) > maxMCPReadBytes {
+		data = data[:maxMCPReadBytes]
 	}
 
 	return CallToolResult{
@@ -518,6 +621,9 @@ func (s *Server) toolSearchPastes(args map[string]any) CallToolResult {
 	if query == "" {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: query cannot be empty."}}}
 	}
+	if len(query) > maxMCPSearchLen {
+		query = query[:maxMCPSearchLen]
+	}
 
 	files, err := db.SearchFiles(s.User.ID, s.User.Role == "super_admin", query, 30)
 	if err != nil {
@@ -540,7 +646,7 @@ func (s *Server) toolSearchPastes(args map[string]any) CallToolResult {
 
 func (s *Server) toolDeletePaste(args map[string]any) CallToolResult {
 	filename, _ := args["filename"].(string)
-	filename = strings.TrimSpace(filepath.Base(filename))
+	filename = sanitizeMCPFilename(filename)
 	if filename == "" {
 		return CallToolResult{IsError: true, Content: []ToolContent{{Type: "text", Text: "Error: filename is required."}}}
 	}
@@ -586,11 +692,14 @@ func (s *Server) handleResourcesRead(req *Request) *Response {
 	}
 
 	uri := strings.TrimPrefix(params.URI, "bingo://pastes/")
-	filename := filepath.Base(uri)
+	filename := sanitizeMCPFilename(uri)
 
 	meta, err := db.GetFile(s.User.Username, filename)
 	if err != nil || meta == nil {
 		return &Response{JSONRPC: "2.0", ID: req.ID, Error: &RPCError{Code: CodeInvalidParams, Message: "Resource not found"}}
+	}
+	if meta.FileSize > maxMCPReadBytes {
+		return &Response{JSONRPC: "2.0", ID: req.ID, Error: &RPCError{Code: CodeInvalidParams, Message: "Resource too large to read inline"}}
 	}
 
 	targetPath := filepath.Join(s.UploadsDir, s.User.Username, filename)

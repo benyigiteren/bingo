@@ -12,18 +12,21 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"bingo/db"
 )
 
 // Session holds SSE client state
 type SSESession struct {
-	ID      string
-	User    *db.User
-	Server  *Server
-	Writer  http.ResponseWriter
-	Flusher http.Flusher
-	Done    chan struct{}
+	ID        string
+	User      *db.User
+	Server    *Server
+	Writer    http.ResponseWriter
+	Flusher   http.Flusher
+	Done      chan struct{}
+	CreatedAt time.Time
+	Mu        sync.Mutex // serializes event-stream writes from concurrent POSTs
 }
 
 var (
@@ -31,11 +34,54 @@ var (
 	sessions   = make(map[string]*SSESession)
 )
 
+const (
+	// maxSSESessions caps concurrent SSE streams (slow-connection DoS defense).
+	maxSSESessions = 1000
+	// maxSSESessionAge expires SSE sessions that never closed cleanly.
+	maxSSESessionAge = 2 * time.Hour
+)
+
+// maxMCPBodyBytes caps MCP HTTP POST bodies, aligned with the configured
+// upload limit plus JSON-RPC/base64 envelope overhead.
+func maxMCPBodyBytes() int64 {
+	mb := db.GetSettingInt("max_upload_size_mb", 50)
+	if mb <= 0 {
+		mb = 50
+	}
+	if mb > 10240 {
+		mb = 10240
+	}
+	return int64(mb)*1024*1024 + 5*1024*1024
+}
+
+// pruneSessions removes expired SSE sessions. Must be called with write lock.
+func pruneSessions() {
+	now := time.Now()
+	for id, sess := range sessions {
+		if now.Sub(sess.CreatedAt) > maxSSESessionAge {
+			delete(sessions, id)
+		}
+	}
+}
+
 // GetSession retrieves an active SSESession by ID
 func GetSession(sessionID string) *SSESession {
+	if sessionID == "" || len(sessionID) > 128 {
+		return nil
+	}
 	sessionsMu.RLock()
-	defer sessionsMu.RUnlock()
-	return sessions[sessionID]
+	sess := sessions[sessionID]
+	sessionsMu.RUnlock()
+	if sess != nil && time.Since(sess.CreatedAt) > maxSSESessionAge {
+		sessionsMu.Lock()
+		// Re-check under write lock before deleting.
+		if cur, ok := sessions[sessionID]; ok && time.Since(cur.CreatedAt) > maxSSESessionAge {
+			delete(sessions, sessionID)
+		}
+		sessionsMu.Unlock()
+		return nil
+	}
+	return sess
 }
 
 func generateSessionID() string {
@@ -135,17 +181,23 @@ func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, 
 			return
 		}
 
+		sessionsMu.Lock()
+		pruneSessions()
+		if len(sessions) >= maxSSESessions {
+			sessionsMu.Unlock()
+			http.Error(w, "Too many streams, try again later", http.StatusServiceUnavailable)
+			return
+		}
 		sessionID := generateSessionID()
 		sess := &SSESession{
-			ID:      sessionID,
-			User:    user,
-			Server:  server,
-			Writer:  w,
-			Flusher: flusher,
-			Done:    make(chan struct{}),
+			ID:        sessionID,
+			User:      user,
+			Server:    server,
+			Writer:    w,
+			Flusher:   flusher,
+			Done:      make(chan struct{}),
+			CreatedAt: time.Now(),
 		}
-
-		sessionsMu.Lock()
 		sessions[sessionID] = sess
 		sessionsMu.Unlock()
 
@@ -163,8 +215,12 @@ func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, 
 		w.Header().Set("Mcp-Session-Id", sessionID)
 		w.Header().Set("X-Session-Id", sessionID)
 
-		// Send endpoint event according to MCP SSE specification
-		msgEndpoint := fmt.Sprintf("/mcp/messages?sessionId=%s&api_key=%s", sessionID, user.APIKey)
+		// Send endpoint event according to MCP SSE specification.
+		// NOTE: the API key is deliberately NOT embedded here. The session is
+		// already bound to the authenticated user server-side, so clients only
+		// need the sessionId. Embedding secrets in event streams leaks them
+		// into logs and browser history.
+		msgEndpoint := fmt.Sprintf("/mcp/messages?sessionId=%s", sessionID)
 		fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", msgEndpoint)
 		flusher.Flush()
 
@@ -176,6 +232,9 @@ func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, 
 	// 2. Handle POST for Streamable HTTP or SSE message posting
 	if r.Method == http.MethodPost {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// Bound request body BEFORE decoding (DoS protection: previously
+		// unlimited JSON decode, including huge base64 file payloads).
+		r.Body = http.MaxBytesReader(w, r.Body, maxMCPBodyBytes())
 
 		sessionID := r.URL.Query().Get("sessionId")
 		if sessionID == "" {
@@ -215,10 +274,13 @@ func HandleHTTP(w http.ResponseWriter, r *http.Request, user *db.User, baseURL, 
 		if exists && sess != nil {
 			resp := sess.Server.ProcessRequest(&req)
 			if resp != nil {
-				// Send response over SSE event stream
+				// Send response over SSE event stream (serialized: concurrent
+				// POSTs for the same session must not interleave frames).
 				respBytes, _ := json.Marshal(resp)
+				sess.Mu.Lock()
 				fmt.Fprintf(sess.Writer, "event: message\ndata: %s\n\n", string(respBytes))
 				sess.Flusher.Flush()
+				sess.Mu.Unlock()
 			}
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusAccepted)

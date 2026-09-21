@@ -20,6 +20,7 @@
       {{ end }}
 
       <form action="/register" method="POST" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ .FormCsrfToken }}">
         <div class="field-group" style="margin-bottom: 18px;">
           <label class="field-label">Yönetici Kullanıcı Adı</label>
           <div style="position: relative; display: flex; align-items: center;">
